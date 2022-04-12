@@ -23,9 +23,9 @@
     "@aws-cdk/aws-iam:minimizePolicies": true,
     "@aws-cdk/core:target-partitions": ["aws", "aws-cn"],
     "control-broker/template-reader-arns": [
-      "arn:aws:iam::371329945392:role/ControlBrokerEvalEngineCd-OpaEvalPythonSubprocessS-MZVNCO0LCR9A",
-      "arn:aws:iam::371329945392:role/ControlBrokerEvalEngineCd-InnerEvalEngineSfnEF6057-1N9WLDMUHPR8T"
+       "arn:aws:iam::899456967600:role/ControlBrokerEvalEngineCd-OpaEvalPythonSubprocessS-G98B895Z30J6",
+       "arn:aws:iam::899456967600:role/ControlBrokerEvalEngineCd-InnerEvalEngineSfnEF6057-1XEZU5G6MT7RP"
     ],
-    "control-broker/sfn-invoke-arn": "arn:aws:states:us-east-1:371329945392:stateMachine:OuterEvalEngine-W6xwWGFNBhMm"
+    "control-broker/sfn-invoke-arn": "arn:aws:states:us-east-1:899456967600:stateMachine:OuterEvalEngine-sThkG4WVSFWV"
   }
 }

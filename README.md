@@ -278,4 +278,12 @@ security policies.
 
 # buildme 4.12.22
 
-cdk deploy --require-approval=never ControlBrokerCodepipelineExampleStack -c control-broker/sfn-invoke-arn=MySfnArn control-broker/template-reader-arns=MyListOfReaderArns ControlBrokerCodepipelineExampleStack  
+## cdk.json
+
+add hard-coded value from CBEE output
+```
+{
+    "control-broker/template-reader-arns":"MySfnArn"
+    "control-broker/sfn-invoke-arn" : ["MyReaderArn1","MyReaderArn2"]
+}
+```
