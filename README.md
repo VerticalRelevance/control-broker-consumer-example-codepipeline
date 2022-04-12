@@ -274,3 +274,8 @@ Both our Example App and OPA Policies were simple and rather arbitrary for
 simplicity's sake. As an organization enters the Policy as Code space, they can
 apply the lessons learned here to increasingly sophisticated applications and
 security policies.
+
+
+# buildme 4.12.22
+
+cdk deploy --require-approval=never ControlBrokerCodepipelineExampleStack -c control-broker/sfn-invoke-arn=MySfnArn control-broker/template-reader-arns=MyListOfReaderArns ControlBrokerCodepipelineExampleStack  
