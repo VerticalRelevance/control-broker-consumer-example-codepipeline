@@ -161,6 +161,19 @@ class ControlBrokerCodepipelineExampleStack(Stack):
         
         # eval
         
+        self.table_eval_internal_state = aws_dynamodb.Table(
+            self,
+            "EvalInternalState",
+            partition_key=aws_dynamodb.Attribute(
+                name="pk", type=aws_dynamodb.AttributeType.STRING
+            ),
+            sort_key=aws_dynamodb.Attribute(
+                name="sk", type=aws_dynamodb.AttributeType.STRING
+            ),
+            billing_mode=aws_dynamodb.BillingMode.PAY_PER_REQUEST,
+            removal_policy=RemovalPolicy.DESTROY,
+        )
+        
         log_group_eval_engine_wrapper = aws_logs.LogGroup(
             self,
             "EvalEngineWrapperSfnLogs",
@@ -205,6 +218,18 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                     "*",
                     self.bucket_synthed_templates.bucket_arn,
                     f"{self.bucket_synthed_templates.bucket_arn}/*"
+                ],
+            )
+        )
+        role_eval_engine_wrapper.add_to_policy(
+            aws_iam.PolicyStatement(
+                actions=[
+                    "dynamodb:UpdateItem",
+                    "dynamodb:Query",
+                ],
+                resources=[
+                    self.table_eval_internal_state.table_arn,
+                    f"{self.table_eval_internal_state.table_arn}/*",
                 ],
             )
         )
@@ -296,19 +321,42 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                 },
                 "AggregateTemplates": {
                     "Type": "Map",
-                    "Next": "IncrementMaxIndex",
+                    "End": True,
                     "ResultPath": "$.AggregateTemplates",
                     "ItemsPath": "$.ListTemplates.Contents",
                     "Parameters": {
-                        "TemplateKey.$": "$$.Map.Item.Value",
+                        "TemplateKey.$": "$$.Map.Item.Value.Key",
                     },
                     "Iterator": {
                         "StartAt": "WriteTemplateToDDB",
                         "States": {
                             "WriteTemplateToDDB": {
-                                "Type":"Pass",
-                                "End":True
-                            }
+                                "Type":"Task",
+                                "End":True,
+                                "ResultPath": "$.WriteTemplateToDDB",
+                                "Resource": "arn:aws:states:::dynamodb:updateItem",
+                                "ResultSelector": {
+                                    "HttpStatusCode.$": "$.SdkHttpMetadata.HttpStatusCode"
+                                },
+                                "Parameters": {
+                                "TableName": self.table_eval_results.table_name,
+                                "Key": {
+                                    "pk": {
+                                        "S.$": "$$.Execution.Id)"
+                                    },
+                                    "sk": {"S": "$$.Map.Item.Index"},
+                                },
+                                "ExpressionAttributeNames": {
+                                    "#key": "Key",
+                                },
+                                "ExpressionAttributeValues": {
+                                    ":key": 
+                                        {
+                                            "S.$": "$.TemplateKey"
+                                        },
+                                },
+                                "UpdateExpression": "SET #key=:key",
+                            },
                         }
                     }
                 }
