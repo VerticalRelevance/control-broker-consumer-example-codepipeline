@@ -200,56 +200,64 @@ class ControlBrokerCodepipelineExampleStack(Stack):
         #     )
         # )
 
-        self.sfn_eval_engine_wrapper = aws_stepfunctions.CfnStateMachine(
-            self,
-            "EvalEngineWrapper",
-            state_machine_type="STANDARD",
-            role_arn=role_eval_engine_wrapper.role_arn,
-            logging_configuration=aws_stepfunctions.CfnStateMachine.LoggingConfigurationProperty(
-                destinations=[
-                    aws_stepfunctions.CfnStateMachine.LogDestinationProperty(
-                        cloud_watch_logs_log_group=aws_stepfunctions.CfnStateMachine.CloudWatchLogsLogGroupProperty(
-                            log_group_arn=log_group_eval_engine_wrapper.log_group_arn
-                        )
-                    )
-                ],
-                include_execution_data=False,
-                level="ERROR",
-            ),
-            definition_string=json.dumps(
-                {
-                    "StartAt": "ParseInput",
-                    "States": {
-                        "ParseInput": {
-                            "Type": "Pass",
-                            "End": True,
-                        }
-                    }
-                }
-            )
-        )
+        # self.sfn_eval_engine_wrapper = aws_stepfunctions.CfnStateMachine(
+        #     self,
+        #     "EvalEngineWrapper",
+        #     state_machine_type="STANDARD",
+        #     role_arn=role_eval_engine_wrapper.role_arn,
+        #     logging_configuration=aws_stepfunctions.CfnStateMachine.LoggingConfigurationProperty(
+        #         destinations=[
+        #             aws_stepfunctions.CfnStateMachine.LogDestinationProperty(
+        #                 cloud_watch_logs_log_group=aws_stepfunctions.CfnStateMachine.CloudWatchLogsLogGroupProperty(
+        #                     log_group_arn=log_group_eval_engine_wrapper.log_group_arn
+        #                 )
+        #             )
+        #         ],
+        #         include_execution_data=False,
+        #         level="ERROR",
+        #     ),
+        #     definition_string=json.dumps(
+        #         {
+        #             "StartAt": "ParseInput",
+        #             "States": {
+        #                 "ParseInput": {
+        #                     "Type": "Pass",
+        #                     "End": True,
+        #                 }
+        #             }
+        #         }
+        #     )
+        # )
 
         self.sfn_eval_engine_wrapper.node.add_dependency(role_eval_engine_wrapper)
 
         state_json = {
-            "Type": "Pass",
-            "End":True
+            "StartAt": "ParseInput",
+            "States": {
+                "ParseInput": {
+                    "Type": "Pass",
+                    "Next":"GetLatestCodePipelineExecutionId"
+                },
+                "GetLatestCodePipelineExecutionId": {
+                    "Type": "Pass",
+                    "End":True
+                },
+            }
         }
         
-        # custom state which represents a task to insert data into DynamoDB
-        custom = aws_stepfunctions.CustomState(self, "ParseInput",
-            state_json=state_json
+        ParseInput = aws_stepfunctions.CustomState(self, "ParseInput",
+            state_json=state_json['States']['ParseInput']
+        )
+        GetLatestCodePipelineExecutionId = aws_stepfunctions.CustomState(self, "GetLatestCodePipelineExecutionId",
+            state_json=state_json['States']['GetLatestCodePipelineExecutionId']
         )
         
-        final_status = aws_stepfunctions.Pass(self, "final step")
+        chain = aws_stepfunctions.Chain.start(ParseInput).next(GetLatestCodePipelineExecutionId)
         
-        chain = aws_stepfunctions.Chain.start(custom).next(final_status)
-        
-        simple_state_machine = aws_stepfunctions.StateMachine(self, "SimpleStateMachine",
+        simple_state_machine = aws_stepfunctions.StateMachine(self, "EvalEngineWrapper",
             definition=chain,
             role = role_eval_engine_wrapper
         )
-
         
         action_eval_engine = aws_codepipeline_actions.StepFunctionInvokeAction(
             action_name="Invoke",
