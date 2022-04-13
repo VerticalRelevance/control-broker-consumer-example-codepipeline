@@ -285,7 +285,7 @@ class ControlBrokerCodepipelineExampleStack(Stack):
             "States": {
                 "ListTemplates": {
                     "Type": "Task",
-                    "Next":"AggregateTemplates"
+                    "Next":"AggregateTemplates",
                     "ResultPath": "$.ListTemplates",
                     "Resource": "arn:aws:states:::aws-sdk:s3:listObjectsV2",
                     # "ResultSelector": {"Items.$": "$.Items"},
@@ -305,8 +305,10 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                     "Iterator": {
                         "StartAt": "WriteTemplateToDDB",
                         "States": {
-                            "Type":"Pass",
-                            "End":True
+                            "WriteTemplateToDDB": {
+                                "Type":"Pass",
+                                "End":True
+                            }
                         }
                     }
                 }
