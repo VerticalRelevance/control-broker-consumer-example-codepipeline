@@ -29,6 +29,7 @@ class ControlBrokerCodepipelineExampleStack(Stack):
         construct_id: str,
         control_broker_template_reader_arns: List[str],
         control_broker_sfn_invoke_arn: str,
+        pipeline_ownership_metadata:str,
         **kwargs,
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
@@ -78,10 +79,41 @@ class ControlBrokerCodepipelineExampleStack(Stack):
         )
         
         # synth
+        
+        role_synth = aws_iam.Role(
+            self,
+            "Synth",
+            assumed_by=aws_iam.ServicePrincipal("codebuild.amazonaws.com"),
+        )
 
+        role_synth.add_to_policy(
+            aws_iam.PolicyStatement(
+                not_actions=[
+                    "s3:Delete*",
+                ],
+                resources=[
+                    "*",
+                ],
+            )
+        )
+
+        synthed_templates_s3_uri_root = f"s3://{self.bucket_synthed_templates.bucket_name}/{pipeline_ownership_metadata['PipelineId']}/RecentTemplates"
+
+        def s3_uri_to_bucket(*,Uri):
+            path_parts=Uri.replace("s3://","").split("/")
+            bucket=path_parts.pop(0)
+            return bucket
+            
+        def s3_uri_to_key(*,Uri):
+            path_parts=Uri.replace("s3://","").split("/")
+            bucket=path_parts.pop(0)
+            key="/".join(path_parts)
+            return key
+            
         build_project_cdk_synth = aws_codebuild.PipelineProject(
             self,
             "CdkSynth",
+            role = role_synth,
             build_spec=aws_codebuild.BuildSpec.from_object(
                 {
                     "version": "0.2",
@@ -103,16 +135,19 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                                 "ls",
                                 "cdk synth",
                                 "ls",
+                                # f'aws s3 sync cdk.out/ s3://{self.bucket_synthed_templates.bucket_name}/$CODEBUILD_INITIATOR --include "*.template.json"'
+                                f'aws s3 sync cdk.out/ {synthed_templates_s3_uri_root} --include "*.template.json"'
                             ],
                         },
                     },
-                    "artifacts": {
-                        "files": ["**/*"],
-                        "discard-paths": "no",
-                        "enable-symlinks": "yes",
-                    },
+                    # "artifacts": {
+                    #     "files": ["**/*"],
+                    #     "discard-paths": "no",
+                    #     "enable-symlinks": "yes",
+                    # },
                 }
             ),
+            
         )
 
         artifact_synthed = aws_codepipeline.Artifact()
@@ -159,30 +194,44 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                 ],
             )
         )
-        role_eval_engine_wrapper.add_to_policy(
+        role_eval_engine_wrapper.add_to_policy( # required for EXPRESS
             aws_iam.PolicyStatement(
                 actions=[
-                    "states:DescribeExecution",
-                    "states:StopExecution"
+                    "s3:List*",
+                    "s3:Head*",
+                    "s3:Get*",
                 ],
                 resources=[
-                    "*"
-                ],
-            )
-        )
-        role_eval_engine_wrapper.add_to_policy(
-            aws_iam.PolicyStatement(
-                actions=[
-                    "events:PutTargets",
-                    "events:PutRule",
-                    "events:DescribeRule"
-                ],
-                resources=[
-                    f"arn:aws:events:{os.getenv('CDK_DEFAULT_REGION')}:{os.getenv('CDK_DEFAULT_ACCOUNT')}:rule/StepFunctionsGetEventsForStepFunctionsExecutionRule",
                     "*",
+                    self.bucket_synthed_templates.bucket_arn,
+                    f"{self.bucket_synthed_templates.bucket_arn}/*"
                 ],
             )
         )
+        # role_eval_engine_wrapper.add_to_policy( # required for EXPRESS
+        #     aws_iam.PolicyStatement(
+        #         actions=[
+        #             "states:DescribeExecution",
+        #             "states:StopExecution"
+        #         ],
+        #         resources=[
+        #             "*"
+        #         ],
+        #     )
+        # )
+        # role_eval_engine_wrapper.add_to_policy( # required for EXPRESS
+        #     aws_iam.PolicyStatement(
+        #         actions=[
+        #             "events:PutTargets",
+        #             "events:PutRule",
+        #             "events:DescribeRule"
+        #         ],
+        #         resources=[
+        #             f"arn:aws:events:{os.getenv('CDK_DEFAULT_REGION')}:{os.getenv('CDK_DEFAULT_ACCOUNT')}:rule/StepFunctionsGetEventsForStepFunctionsExecutionRule",
+        #             "*",
+        #         ],
+        #     )
+        # )
 
         # In real life, you'd probably have a stack set in each consumer
         # account that would register the account with the control broker
@@ -229,30 +278,49 @@ class ControlBrokerCodepipelineExampleStack(Stack):
         #     )
         # )
 
-        self.sfn_eval_engine_wrapper.node.add_dependency(role_eval_engine_wrapper)
+        # self.sfn_eval_engine_wrapper.node.add_dependency(role_eval_engine_wrapper)
 
         state_json = {
-            "StartAt": "ParseInput",
+            "StartAt": "ListTemplates",
             "States": {
-                "ParseInput": {
-                    "Type": "Pass",
-                    "Next":"GetLatestCodePipelineExecutionId"
+                "ListTemplates": {
+                    "Type": "Task",
+                    "Next":"AggregateTemplates"
+                    "ResultPath": "$.ListTemplates",
+                    "Resource": "arn:aws:states:::aws-sdk:s3:listObjectsV2",
+                    # "ResultSelector": {"Items.$": "$.Items"},
+                    "Parameters": {
+                        "Bucket" : s3_uri_to_bucket(Uri=synthed_templates_s3_uri_root),
+                        "Prefix" : s3_uri_to_key(Uri=synthed_templates_s3_uri_root)
+                    }
                 },
-                "GetLatestCodePipelineExecutionId": {
-                    "Type": "Pass",
-                    "End":True
-                },
+                "AggregateTemplates": {
+                    "Type": "Map",
+                    "Next": "IncrementMaxIndex",
+                    "ResultPath": "$.AggregateTemplates",
+                    "ItemsPath": "$.ListTemplates.Contents",
+                    "Parameters": {
+                        "TemplateKey.$": "$$.Map.Item.Value",
+                    },
+                    "Iterator": {
+                        "StartAt": "WriteTemplateToDDB",
+                        "States": {
+                            "Type":"Pass",
+                            "End":True
+                        }
+                    }
+                }
             }
         }
         
-        ParseInput = aws_stepfunctions.CustomState(self, "ParseInput",
-            state_json=state_json['States']['ParseInput']
+        ListTemplates = aws_stepfunctions.CustomState(self, "ListTemplates",
+            state_json=state_json['States']['ListTemplates']
         )
-        GetLatestCodePipelineExecutionId = aws_stepfunctions.CustomState(self, "GetLatestCodePipelineExecutionId",
-            state_json=state_json['States']['GetLatestCodePipelineExecutionId']
+        AggregateTemplates = aws_stepfunctions.CustomState(self, "AggregateTemplates",
+            state_json=state_json['States']['AggregateTemplates']
         )
         
-        chain = aws_stepfunctions.Chain.start(ParseInput).next(GetLatestCodePipelineExecutionId)
+        chain = aws_stepfunctions.Chain.start(ListTemplates).next(AggregateTemplates)
         
         simple_state_machine = aws_stepfunctions.StateMachine(self, "EvalEngineWrapper",
             definition=chain,
@@ -263,7 +331,7 @@ class ControlBrokerCodepipelineExampleStack(Stack):
             action_name="Invoke",
             # state_machine=self.sfn_eval_engine_wrapper,
             state_machine=simple_state_machine,
-            state_machine_input=aws_codepipeline_actions.StateMachineInput.literal({"IsHelloWorldExample": True})
+            # state_machine_input=aws_codepipeline_actions.StateMachineInput.literal({"InvokedByCodePipelineArn": synth_eval_pipeline.pipeline_arn})
         )
         
 
@@ -370,7 +438,7 @@ class ControlBrokerCodepipelineExampleStack(Stack):
         #     input=artifact_synthed,
         # )
 
-        aws_codepipeline.Pipeline(
+        synth_eval_pipeline = aws_codepipeline.Pipeline(
             self,
             "ControlBrokerEvalEngine",
             artifact_bucket=aws_s3.Bucket(
