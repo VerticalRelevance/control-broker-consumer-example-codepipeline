@@ -310,7 +310,7 @@ class ControlBrokerCodepipelineExampleStack(Stack):
             "States": {
                 "ListTemplates": {
                     "Type": "Task",
-                    "Next":"AggregateTemplates",
+                    "Next":"ScatterTemplates",
                     "ResultPath": "$.ListTemplates",
                     "Resource": "arn:aws:states:::aws-sdk:s3:listObjectsV2",
                     # "ResultSelector": {"Items.$": "$.Items"},
@@ -319,13 +319,14 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                         "Prefix" : s3_uri_to_key(Uri=synthed_templates_s3_uri_root)
                     }
                 },
-                "AggregateTemplates": {
+                "ScatterTemplates": {
                     "Type": "Map",
                     "End": True,
-                    "ResultPath": "$.AggregateTemplates",
+                    "ResultPath": "$.ScatterTemplates",
                     "ItemsPath": "$.ListTemplates.Contents",
                     "Parameters": {
                         "TemplateKey.$": "$$.Map.Item.Value.Key",
+                        "MapIndex.$": "$$.Map.Item.Index",
                     },
                     "Iterator": {
                         "StartAt": "WriteTemplateToDDB",
@@ -339,25 +340,58 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                                     "HttpStatusCode.$": "$.SdkHttpMetadata.HttpStatusCode"
                                 },
                                 "Parameters": {
-                                "TableName": self.table_eval_results.table_name,
-                                "Key": {
-                                    "pk": {
-                                        "S.$": "$$.Execution.Id)"
-                                    },
-                                    "sk": {"S": "$$.Map.Item.Index"},
-                                },
-                                "ExpressionAttributeNames": {
-                                    "#key": "Key",
-                                },
-                                "ExpressionAttributeValues": {
-                                    ":key": 
-                                        {
-                                            "S.$": "$.TemplateKey"
+                                    "TableName": self.table_eval_internal_state.table_name,
+                                    "Key": {
+                                        "pk": {
+                                            "S.$": "$$.Execution.Id"
                                         },
-                                },
-                                "UpdateExpression": "SET #key=:key",
-                            },
+                                        "sk": {
+                                            "S.$": "$.TemplateKey"
+                                            # "S.$": "$.MapIndex"
+                                        },
+                                    },
+                                    # "ExpressionAttributeNames": {
+                                    #     "#key": "Key",
+                                    # },
+                                    # "ExpressionAttributeValues": {
+                                    #     ":key": {
+                                    #         "S.$": "$.TemplateKey"
+                                    #     },
+                                    # },
+                                    # "UpdateExpression": "SET #key=:key"
+                                }
+                            }
                         }
+                    }
+                },
+                "GatherTemplates": {
+                    "Type":"Task",
+                    "End":True,
+                    "ResultPath": "$.WriteTemplateToDDB",
+                    "Resource": "arn:aws:states:::dynamodb:updateItem",
+                    "ResultSelector": {
+                        "HttpStatusCode.$": "$.SdkHttpMetadata.HttpStatusCode"
+                    },
+                    "Parameters": {
+                        "TableName": self.table_eval_internal_state.table_name,
+                        "Key": {
+                            "pk": {
+                                "S.$": "$$.Execution.Id"
+                            },
+                            "sk": {
+                                "S.$": "$.TemplateKey"
+                                # "S.$": "$.MapIndex"
+                            },
+                        },
+                        # "ExpressionAttributeNames": {
+                        #     "#key": "Key",
+                        # },
+                        # "ExpressionAttributeValues": {
+                        #     ":key": {
+                        #         "S.$": "$.TemplateKey"
+                        #     },
+                        # },
+                        # "UpdateExpression": "SET #key=:key"
                     }
                 }
             }
@@ -366,11 +400,14 @@ class ControlBrokerCodepipelineExampleStack(Stack):
         ListTemplates = aws_stepfunctions.CustomState(self, "ListTemplates",
             state_json=state_json['States']['ListTemplates']
         )
-        AggregateTemplates = aws_stepfunctions.CustomState(self, "AggregateTemplates",
-            state_json=state_json['States']['AggregateTemplates']
+        ScatterTemplates = aws_stepfunctions.CustomState(self, "ScatterTemplates",
+            state_json=state_json['States']['ScatterTemplates']
+        )
+        GatherTemplates = aws_stepfunctions.CustomState(self, "GatherTemplates",
+            state_json=state_json['States']['GatherTemplates']
         )
         
-        chain = aws_stepfunctions.Chain.start(ListTemplates).next(AggregateTemplates)
+        chain = aws_stepfunctions.Chain.start(ListTemplates).next(ScatterTemplates).next(GatherTemplates)
         
         simple_state_machine = aws_stepfunctions.StateMachine(self, "EvalEngineWrapper",
             definition=chain,
