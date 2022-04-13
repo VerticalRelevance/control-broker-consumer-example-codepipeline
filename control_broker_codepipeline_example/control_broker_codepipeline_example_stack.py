@@ -321,7 +321,7 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                 },
                 "ScatterTemplates": {
                     "Type": "Map",
-                    "End": True,
+                    "Next": "GatherTemplates",
                     "ResultPath": "$.ScatterTemplates",
                     "ItemsPath": "$.ListTemplates.Contents",
                     "Parameters": {
@@ -367,31 +367,19 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                 "GatherTemplates": {
                     "Type":"Task",
                     "End":True,
-                    "ResultPath": "$.WriteTemplateToDDB",
-                    "Resource": "arn:aws:states:::dynamodb:updateItem",
+                    "ResultPath": "$.GatherTemplates",
+                    "Resource": "arn:aws:states:::aws-sdk:dynamodb:query",
                     "ResultSelector": {
-                        "HttpStatusCode.$": "$.SdkHttpMetadata.HttpStatusCode"
+                        "Templates.$": "$.Items"
                     },
                     "Parameters": {
                         "TableName": self.table_eval_internal_state.table_name,
-                        "Key": {
-                            "pk": {
+                        "ExpressionAttributeValues" : {
+                            ":pk" : {
                                 "S.$": "$$.Execution.Id"
-                            },
-                            "sk": {
-                                "S.$": "$.TemplateKey"
-                                # "S.$": "$.MapIndex"
-                            },
+                            }
                         },
-                        # "ExpressionAttributeNames": {
-                        #     "#key": "Key",
-                        # },
-                        # "ExpressionAttributeValues": {
-                        #     ":key": {
-                        #         "S.$": "$.TemplateKey"
-                        #     },
-                        # },
-                        # "UpdateExpression": "SET #key=:key"
+                        "KeyConditionExpression" : "pk = :pk"
                     }
                 }
             }
