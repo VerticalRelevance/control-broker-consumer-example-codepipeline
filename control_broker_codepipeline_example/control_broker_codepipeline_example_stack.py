@@ -169,9 +169,22 @@ class ControlBrokerCodepipelineExampleStack(Stack):
             ),
             sort_key=aws_dynamodb.Attribute(
                 name="sk", type=aws_dynamodb.AttributeType.STRING
+                # name="sk", type=aws_dynamodb.AttributeType.STRING
             ),
             billing_mode=aws_dynamodb.BillingMode.PAY_PER_REQUEST,
             removal_policy=RemovalPolicy.DESTROY,
+        )
+        
+        lambda_list_comprehension = aws_lambda.Function(
+            self,
+            "ListComprehension",
+            runtime=aws_lambda.Runtime.PYTHON_3_9,
+            handler="lambda_function.lambda_handler",
+            timeout=Duration.seconds(10),
+            memory_size=128,
+            code=aws_lambda.Code.from_asset(
+                "./supplementary_files/lambdas/list-comprehension"
+            ),
         )
         
         log_group_eval_engine_wrapper = aws_logs.LogGroup(
@@ -225,23 +238,23 @@ class ControlBrokerCodepipelineExampleStack(Stack):
             aws_iam.PolicyStatement(
                 actions=["lambda:InvokeFunction"],
                 resources=[
-                    self.lambda_list_comprehension.function_arn,
+                    lambda_list_comprehension.function_arn,
                 ],
             )
         )
 
-        # role_eval_engine_wrapper.add_to_policy(
-        #     aws_iam.PolicyStatement(
-        #         actions=[
-        #             "dynamodb:UpdateItem",
-        #             "dynamodb:Query",
-        #         ],
-        #         resources=[
-        #             self.table_eval_internal_state.table_arn,
-        #             f"{self.table_eval_internal_state.table_arn}/*",
-        #         ],
-        #     )
-        # )
+        role_eval_engine_wrapper.add_to_policy(
+            aws_iam.PolicyStatement(
+                actions=[
+                    "dynamodb:UpdateItem",
+                    "dynamodb:Query",
+                ],
+                resources=[
+                    self.table_eval_internal_state.table_arn,
+                    f"{self.table_eval_internal_state.table_arn}/*",
+                ],
+            )
+        )
         # role_eval_engine_wrapper.add_to_policy( # required for EXPRESS
         #     aws_iam.PolicyStatement(
         #         actions=[
@@ -314,24 +327,13 @@ class ControlBrokerCodepipelineExampleStack(Stack):
 
         # self.sfn_eval_engine_wrapper.node.add_dependency(role_eval_engine_wrapper)
         
-        lambda_list_comprehension = aws_lambda.Function(
-            self,
-            "EvalEngineWrapper",
-            runtime=aws_lambda.Runtime.PYTHON_3_9,
-            handler="lambda_function.lambda_handler",
-            timeout=Duration.seconds(60),
-            memory_size=1024,
-            code=aws_lambda.Code.from_asset(
-                "./supplementary_files/lambdas/list-comprehension"
-            ),
-        )
 
         state_json = {
             "StartAt": "ListTemplates",
             "States": {
                 "ListTemplates": {
                     "Type": "Task",
-                    "Next":"GatherTemplates",
+                    "Next":"ScatterTemplates",
                     "ResultPath": "$.ListTemplates",
                     "Resource": "arn:aws:states:::aws-sdk:s3:listObjectsV2",
                     # "ResultSelector": {"Items.$": "$.Items"},
@@ -340,67 +342,68 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                         "Prefix" : s3_uri_to_key(Uri=synthed_templates_s3_uri_root)
                     }
                 },
-                "GatherTemplates": {
-                    "Type": "Task",
-                    "End":True,
-                    "ResultPath": "$.GatherTemplates",
-                    "Resource": "arn:aws:states:::lambda:invoke",
-                    "ResultSelector": {
-                        "Templates.$": "$.Payload"
-                    },
-                    "Parameters": {
-                        "FunctionName": lambda_list_comprehension.function_name,
-                        "Payload": {
-                            "Key": "Key",
-                            "List.$": "$.ListTemplates.Contents"
-                        },
-                    },
-                }
-                # "ScatterTemplates": {
-                #     "Type": "Map",
-                #     "Next": "GatherTemplates",
-                #     "ResultPath": "$.ScatterTemplates",
-                #     "ItemsPath": "$.ListTemplates.Contents",
-                #     "Parameters": {
-                #         "TemplateKey.$": "$$.Map.Item.Value.Key",
-                #         "MapIndex.$": "$$.Map.Item.Index",
+                # "GatherTemplates": {
+                #     "Type": "Task",
+                #     "End":True,
+                #     "ResultPath": "$.GatherTemplates",
+                #     "Resource": "arn:aws:states:::lambda:invoke",
+                #     "ResultSelector": {
+                #         "Templates.$": "$.Payload"
                 #     },
-                #     "Iterator": {
-                #         "StartAt": "WriteTemplateToDDB",
-                #         "States": {
-                #             "WriteTemplateToDDB": {
-                #                 "Type":"Task",
-                #                 "End":True,
-                #                 "ResultPath": "$.WriteTemplateToDDB",
-                #                 "Resource": "arn:aws:states:::dynamodb:updateItem",
-                #                 "ResultSelector": {
-                #                     "HttpStatusCode.$": "$.SdkHttpMetadata.HttpStatusCode"
-                #                 },
-                #                 "Parameters": {
-                #                     "TableName": self.table_eval_internal_state.table_name,
-                #                     "Key": {
-                #                         "pk": {
-                #                             "S.$": "$$.Execution.Id"
-                #                         },
-                #                         "sk": {
-                #                             "S.$": "$.TemplateKey"
-                #                             # "S.$": "$.MapIndex"
-                #                         },
-                #                     },
-                #                     # "ExpressionAttributeNames": {
-                #                     #     "#key": "Key",
-                #                     # },
-                #                     # "ExpressionAttributeValues": {
-                #                     #     ":key": {
-                #                     #         "S.$": "$.TemplateKey"
-                #                     #     },
-                #                     # },
-                #                     # "UpdateExpression": "SET #key=:key"
-                #                 }
-                #             }
-                #         }
-                #     }
-                # },
+                #     "Parameters": {
+                #         "FunctionName": lambda_list_comprehension.function_name,
+                #         "Payload": {
+                #             "Key": "Key",
+                #             "List.$": "$.ListTemplates.Contents"
+                #         },
+                #     },
+                # }
+                "ScatterTemplates": {
+                    "Type": "Map",
+                    "End":True,
+                    "ResultPath": "$.ScatterTemplates",
+                    "ItemsPath": "$.ListTemplates.Contents",
+                    "Parameters": {
+                        "TemplateKey.$": "$$.Map.Item.Value.Key",
+                        "MapIndex.$": "$$.Map.Item.Index",
+                    },
+                    "Iterator": {
+                        "StartAt": "WriteTemplateToDDB",
+                        "States": {
+                            "WriteTemplateToDDB": {
+                                "Type":"Task",
+                                "End":True,
+                                "ResultPath": "$.WriteTemplateToDDB",
+                                "Resource": "arn:aws:states:::dynamodb:updateItem",
+                                "ResultSelector": {
+                                    "HttpStatusCode.$": "$.SdkHttpMetadata.HttpStatusCode"
+                                },
+                                "Parameters": {
+                                    "TableName": self.table_eval_internal_state.table_name,
+                                    "Key": {
+                                        "pk": {
+                                            "S.$": "$$.Execution.Id"
+                                        },
+                                        "sk": {
+                                            "S": "Templates"
+                                            # "S.$": "$.TemplateKey"
+                                            # "S.$": "$.MapIndex"
+                                        },
+                                    },
+                                    "ExpressionAttributeNames": {
+                                        "#keys": "Keys",
+                                    },
+                                    "ExpressionAttributeValues": {
+                                        ":key": {
+                                            "SS": ["$.TemplateKey"]
+                                        },
+                                    },
+                                    "UpdateExpression": "SET list_append(#keys, :key)"
+                                }
+                            }
+                        }
+                    }
+                },
                 # "GatherTemplates": {
                 #     "Type":"Task",
                 #     "End":True,
@@ -425,11 +428,14 @@ class ControlBrokerCodepipelineExampleStack(Stack):
         ListTemplates = aws_stepfunctions.CustomState(self, "ListTemplates",
             state_json=state_json['States']['ListTemplates']
         )
-        GatherTemplates = aws_stepfunctions.CustomState(self, "GatherTemplates",
-            state_json=state_json['States']['GatherTemplates']
+        # GatherTemplates = aws_stepfunctions.CustomState(self, "GatherTemplates",
+        #     state_json=state_json['States']['GatherTemplates']
+        # )
+        ScatterTemplates = aws_stepfunctions.CustomState(self, "ScatterTemplates",
+            state_json=state_json['States']['ScatterTemplates']
         )
         
-        chain = aws_stepfunctions.Chain.start(ListTemplates).next(GatherTemplates)
+        chain = aws_stepfunctions.Chain.start(ListTemplates).next(ScatterTemplates)
         
         simple_state_machine = aws_stepfunctions.StateMachine(self, "EvalEngineWrapper",
             definition=chain,
