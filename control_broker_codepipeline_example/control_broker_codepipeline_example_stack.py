@@ -162,17 +162,6 @@ class ControlBrokerCodepipelineExampleStack(Stack):
         role_eval_engine_wrapper.add_to_policy(
             aws_iam.PolicyStatement(
                 actions=[
-                    "states:StartExecution",
-                    "states:StartSyncExecution",
-                ],
-                resources=[
-                    self.sfn_inner_eval_engine.attr_arn
-                ],
-            )
-        )
-        role_eval_engine_wrapper.add_to_policy(
-            aws_iam.PolicyStatement(
-                actions=[
                     "states:DescribeExecution",
                     "states:StopExecution"
                 ],
@@ -199,21 +188,21 @@ class ControlBrokerCodepipelineExampleStack(Stack):
         # account that would register the account with the control broker
         # and create a role inside the account with permissions to invoke
         # the control broker.
-        role_eval_engine_wrapper.add_to_policy(
-            aws_iam.PolicyStatement(
-                actions=[
-                    "states:StartSyncExecution",
-                ],
-                resources=[
-                    control_broker_sfn_invoke_arn,
-                    f"{control_broker_sfn_invoke_arn}*",
-                ],
-            )
-        )
+        # role_eval_engine_wrapper.add_to_policy(
+        #     aws_iam.PolicyStatement(
+        #         actions=[
+        #             "states:StartSyncExecution",
+        #         ],
+        #         resources=[
+        #             control_broker_sfn_invoke_arn,
+        #             f"{control_broker_sfn_invoke_arn}*",
+        #         ],
+        #     )
+        # )
 
         self.sfn_eval_engine_wrapper = aws_stepfunctions.CfnStateMachine(
             self,
-            "OuterEvalEngine",
+            "EvalEngineWrapper",
             state_machine_type="STANDARD",
             role_arn=role_eval_engine_wrapper.role_arn,
             logging_configuration=aws_stepfunctions.CfnStateMachine.LoggingConfigurationProperty(
@@ -242,11 +231,34 @@ class ControlBrokerCodepipelineExampleStack(Stack):
 
         self.sfn_eval_engine_wrapper.node.add_dependency(role_eval_engine_wrapper)
 
+        state_json = {
+            "Type": "Pass",
+            "End":True
+        }
+        
+        # custom state which represents a task to insert data into DynamoDB
+        custom = aws_stepfunctions.CustomState(self, "ParseInput",
+            state_json=state_json
+        )
+        
+        final_status = aws_stepfunctions.Pass(self, "final step")
+        
+        chain = aws_stepfunctions.Chain.start(custom).next(final_status)
+        
+        simple_state_machine = aws_stepfunctions.StateMachine(self, "SimpleStateMachine",
+            definition=chain,
+            role = role_eval_engine_wrapper
+        )
+
+        
         action_eval_engine = aws_codepipeline_actions.StepFunctionInvokeAction(
             action_name="Invoke",
-            state_machine=self.sfn_eval_engine_wrapper,
-            # state_machine_input=codepipeline_actions.StateMachineInput.literal({"IsHelloWorldExample": True})
+            # state_machine=self.sfn_eval_engine_wrapper,
+            state_machine=simple_state_machine,
+            state_machine_input=aws_codepipeline_actions.StateMachineInput.literal({"IsHelloWorldExample": True})
         )
+        
+
         
         # lambda_eval_engine_wrapper = aws_lambda.Function(
         #     self,
