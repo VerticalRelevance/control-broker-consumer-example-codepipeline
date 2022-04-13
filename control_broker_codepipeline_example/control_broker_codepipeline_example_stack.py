@@ -1,3 +1,5 @@
+import os
+import json
 from typing import List
 from aws_cdk import (
     CfnOutput,
@@ -10,7 +12,12 @@ from aws_cdk import (
     aws_codepipeline_actions,
     aws_iam,
     aws_lambda,
+    aws_dynamodb,
     aws_s3,
+    aws_s3_deployment,
+    aws_stepfunctions,
+    aws_logs,
+    aws_events,
 )
 from constructs import Construct
 
@@ -49,6 +56,8 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                 aws_iam.ArnPrincipal(control_broker_principal_arn)
             )
 
+        # source
+
         self.repo_app_team_cdk = aws_codecommit.Repository(
             self,
             "ApplicationTeamExampleAppRepository",
@@ -67,6 +76,8 @@ class ControlBrokerCodepipelineExampleStack(Stack):
             branch="main",
             output=artifact_source,
         )
+        
+        # synth
 
         build_project_cdk_synth = aws_codebuild.PipelineProject(
             self,
@@ -112,25 +123,75 @@ class ControlBrokerCodepipelineExampleStack(Stack):
             input=artifact_source,
             outputs=[artifact_synthed],
         )
-
-        lambda_eval_engine_wrapper = aws_lambda.Function(
+        
+        # eval
+        
+        log_group_eval_engine_wrapper = aws_logs.LogGroup(
             self,
-            "EvalEngineWrapper",
-            runtime=aws_lambda.Runtime.PYTHON_3_9,
-            handler="lambda_function.lambda_handler",
-            timeout=Duration.seconds(60),
-            memory_size=1024,
-            code=aws_lambda.Code.from_asset(
-                "./supplementary_files/lambdas/eval-engine-wrapper"
-            ),
+            "EvalEngineWrapperSfnLogs",
+            log_group_name="/aws/vendedlogs/states/EvalEngineWrapperSfnLogs",
+            removal_policy=RemovalPolicy.DESTROY,
         )
 
-        lambda_eval_engine_wrapper.role.add_to_policy(
+        role_eval_engine_wrapper = aws_iam.Role(
+            self,
+            "EvalEngineWrapperSfn",
+            assumed_by=aws_iam.ServicePrincipal("states.amazonaws.com"),
+        )
+
+        role_eval_engine_wrapper.add_to_policy(
             aws_iam.PolicyStatement(
                 actions=[
-                    "s3:PutObject",
+                    # "logs:*",
+                    "logs:CreateLogDelivery",
+                    "logs:GetLogDelivery",
+                    "logs:UpdateLogDelivery",
+                    "logs:DeleteLogDelivery",
+                    "logs:ListLogDeliveries",
+                    "logs:PutResourcePolicy",
+                    "logs:DescribeResourcePolicies",
+                    "logs:DescribeLogGroups",
                 ],
-                resources=[f"{self.bucket_synthed_templates.bucket_arn}/*"],
+                resources=[
+                    "*",
+                    log_group_eval_engine_wrapper.log_group_arn,
+                    f"{log_group_eval_engine_wrapper.log_group_arn}*",
+                ],
+            )
+        )
+        role_eval_engine_wrapper.add_to_policy(
+            aws_iam.PolicyStatement(
+                actions=[
+                    "states:StartExecution",
+                    "states:StartSyncExecution",
+                ],
+                resources=[
+                    self.sfn_inner_eval_engine.attr_arn
+                ],
+            )
+        )
+        role_eval_engine_wrapper.add_to_policy(
+            aws_iam.PolicyStatement(
+                actions=[
+                    "states:DescribeExecution",
+                    "states:StopExecution"
+                ],
+                resources=[
+                    "*"
+                ],
+            )
+        )
+        role_eval_engine_wrapper.add_to_policy(
+            aws_iam.PolicyStatement(
+                actions=[
+                    "events:PutTargets",
+                    "events:PutRule",
+                    "events:DescribeRule"
+                ],
+                resources=[
+                    f"arn:aws:events:{os.getenv('CDK_DEFAULT_REGION')}:{os.getenv('CDK_DEFAULT_ACCOUNT')}:rule/StepFunctionsGetEventsForStepFunctionsExecutionRule",
+                    "*",
+                ],
             )
         )
 
@@ -138,7 +199,7 @@ class ControlBrokerCodepipelineExampleStack(Stack):
         # account that would register the account with the control broker
         # and create a role inside the account with permissions to invoke
         # the control broker.
-        lambda_eval_engine_wrapper.role.add_to_policy(
+        role_eval_engine_wrapper.add_to_policy(
             aws_iam.PolicyStatement(
                 actions=[
                     "states:StartSyncExecution",
@@ -150,68 +211,144 @@ class ControlBrokerCodepipelineExampleStack(Stack):
             )
         )
 
-        action_eval_engine = aws_codepipeline_actions.LambdaInvokeAction(
-            action_name="EvalEngine",
-            inputs=[artifact_synthed],
-            lambda_=lambda_eval_engine_wrapper,
-            user_parameters={
-                "SynthedTemplatesBucket": self.bucket_synthed_templates.bucket_name,
-                "EvalEngineSfnArn": control_broker_sfn_invoke_arn,
-            },
-        )
-
-        role_cdk_deploy = aws_iam.Role(
+        self.sfn_eval_engine_wrapper = aws_stepfunctions.CfnStateMachine(
             self,
-            "RoleCdkDeploy",
-            assumed_by=aws_iam.ServicePrincipal("codebuild.amazonaws.com"),
-        )
-        role_cdk_deploy.add_to_policy(
-            aws_iam.PolicyStatement(
-                not_actions=[
-                    "cloudformation:Delete*",
+            "OuterEvalEngine",
+            state_machine_type="STANDARD",
+            role_arn=role_eval_engine_wrapper.role_arn,
+            logging_configuration=aws_stepfunctions.CfnStateMachine.LoggingConfigurationProperty(
+                destinations=[
+                    aws_stepfunctions.CfnStateMachine.LogDestinationProperty(
+                        cloud_watch_logs_log_group=aws_stepfunctions.CfnStateMachine.CloudWatchLogsLogGroupProperty(
+                            log_group_arn=log_group_eval_engine_wrapper.log_group_arn
+                        )
+                    )
                 ],
-                resources=[
-                    "*",
-                ],
+                include_execution_data=False,
+                level="ERROR",
+            ),
+            definition_string=json.dumps(
+                {
+                    "StartAt": "ParseInput",
+                    "States": {
+                        "ParseInput": {
+                            "Type": "Pass",
+                            "End": True,
+                        }
+                    }
+                }
             )
         )
 
-        build_project_cdk_deploy = aws_codebuild.PipelineProject(
-            self,
-            "CdkDeploy",
-            role=role_cdk_deploy,
-            build_spec=aws_codebuild.BuildSpec.from_object(
-                {
-                    "version": "0.2",
-                    "phases": {
-                        "install": {
-                            "on-failure": "ABORT",
-                            "commands": [
-                                # TODO upgrade node, v10 deprecated
-                                "npm install -g typescript",
-                                "npm install -g ts-node",
-                                "npm install -g aws-cdk",
-                                "npm install",
-                                "cdk --version",
-                            ],
-                        },
-                        "build": {
-                            "on-failure": "ABORT",
-                            "commands": [
-                                "ls",
-                                "cdk deploy --all --require-approval never",
-                            ],
-                        },
-                    },
-                }
-            ),
-        )
+        self.sfn_eval_engine_wrapper.node.add_dependency(role_eval_engine_wrapper)
 
-        action_build_cdk_deploy = aws_codepipeline_actions.CodeBuildAction(
-            action_name="CodeBuildCdkDeploy",
-            project=build_project_cdk_deploy,
-            input=artifact_synthed,
+        action_eval_engine = aws_codepipeline_actions.StepFunctionInvokeAction(
+            action_name="Invoke",
+            state_machine=self.sfn_eval_engine_wrapper,
+            # state_machine_input=codepipeline_actions.StateMachineInput.literal({"IsHelloWorldExample": True})
         )
+        
+        # lambda_eval_engine_wrapper = aws_lambda.Function(
+        #     self,
+        #     "EvalEngineWrapper",
+        #     runtime=aws_lambda.Runtime.PYTHON_3_9,
+        #     handler="lambda_function.lambda_handler",
+        #     timeout=Duration.seconds(60),
+        #     memory_size=1024,
+        #     code=aws_lambda.Code.from_asset(
+        #         "./supplementary_files/lambdas/eval-engine-wrapper"
+        #     ),
+        # )
+
+        # lambda_eval_engine_wrapper.role.add_to_policy(
+        #     aws_iam.PolicyStatement(
+        #         actions=[
+        #             "s3:PutObject",
+        #         ],
+        #         resources=[f"{self.bucket_synthed_templates.bucket_arn}/*"],
+        #     )
+        # )
+
+        # # In real life, you'd probably have a stack set in each consumer
+        # # account that would register the account with the control broker
+        # # and create a role inside the account with permissions to invoke
+        # # the control broker.
+        # lambda_eval_engine_wrapper.role.add_to_policy(
+        #     aws_iam.PolicyStatement(
+        #         actions=[
+        #             "states:StartSyncExecution",
+        #         ],
+        #         resources=[
+        #             control_broker_sfn_invoke_arn,
+        #             f"{control_broker_sfn_invoke_arn}*",
+        #         ],
+        #     )
+        # )
+
+        # action_eval_engine = aws_codepipeline_actions.LambdaInvokeAction(
+        #     action_name="EvalEngine",
+        #     inputs=[artifact_synthed],
+        #     lambda_=lambda_eval_engine_wrapper,
+        #     user_parameters={
+        #         "SynthedTemplatesBucket": self.bucket_synthed_templates.bucket_name,
+        #         "EvalEngineSfnArn": control_broker_sfn_invoke_arn,
+        #     },
+        # )
+
+        # deploy
+
+        # role_cdk_deploy = aws_iam.Role(
+        #     self,
+        #     "RoleCdkDeploy",
+        #     assumed_by=aws_iam.ServicePrincipal("codebuild.amazonaws.com"),
+        # )
+        # role_cdk_deploy.add_to_policy(
+        #     aws_iam.PolicyStatement(
+        #         not_actions=[
+        #             "cloudformation:Delete*",
+        #         ],
+        #         resources=[
+        #             "*",
+        #         ],
+        #     )
+        # )
+
+        # build_project_cdk_deploy = aws_codebuild.PipelineProject(
+        #     self,
+        #     "CdkDeploy",
+        #     role=role_cdk_deploy,
+        #     build_spec=aws_codebuild.BuildSpec.from_object(
+        #         {
+        #             "version": "0.2",
+        #             "phases": {
+        #                 "install": {
+        #                     "on-failure": "ABORT",
+        #                     "commands": [
+        #                         # TODO upgrade node, v10 deprecated
+        #                         "npm install -g typescript",
+        #                         "npm install -g ts-node",
+        #                         "npm install -g aws-cdk",
+        #                         "npm install",
+        #                         "cdk --version",
+        #                     ],
+        #                 },
+        #                 "build": {
+        #                     "on-failure": "ABORT",
+        #                     "commands": [
+        #                         "ls",
+        #                         "cdk deploy --all --require-approval never",
+        #                     ],
+        #                 },
+        #             },
+        #         }
+        #     ),
+        # )
+
+        # action_build_cdk_deploy = aws_codepipeline_actions.CodeBuildAction(
+        #     action_name="CodeBuildCdkDeploy",
+        #     project=build_project_cdk_deploy,
+        #     input=artifact_synthed,
+        # )
 
         aws_codepipeline.Pipeline(
             self,
@@ -232,8 +369,8 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                 aws_codepipeline.StageProps(
                     stage_name="EvalEngine", actions=[action_eval_engine]
                 ),
-                aws_codepipeline.StageProps(
-                    stage_name="CdkDeploy", actions=[action_build_cdk_deploy]
-                ),
+                # aws_codepipeline.StageProps(
+                #     stage_name="CdkDeploy", actions=[action_build_cdk_deploy]
+                # ),
             ],
         )
