@@ -433,14 +433,31 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                 },
                 "StartSyncExecutionEvalEngine": {
                     "Type": "Task",
-                    "End": True,
+                    "Next": "ChoiceEvalEngineStatus",
                     "ResultPath": "$.StartSyncExecutionEvalEngine",
                     "Resource": "arn:aws:states:::aws-sdk:sfn:startSyncExecution",
                     "Parameters": {
                         "StateMachineArn": control_broker_sfn_invoke_arn,
                         "Input.$": "$.FormatEvalEngineInput.Input"
                     }
-                }
+                },
+                # "ChoiceEvalEngineStatus" : {
+                #     "Type" : "Choice",
+                #     "Default" : "Fail",
+                #     "Choices" : [
+                #       {
+                #         "Variable" : "$.StartSyncExecutionEvalEngine.Status",
+                #         "StringEquals" : "SUCCEEDED",
+                #         "Next" : "Succeed"
+                #       }
+                #     ]
+                # },
+                # "Fail" : {
+                #     "Type" : "Fail",
+                # },
+                # "Succeed" : {
+                #     "Type" : "Succeed",
+                # }
             }
         }
         
@@ -459,8 +476,16 @@ class ControlBrokerCodepipelineExampleStack(Stack):
         StartSyncExecutionEvalEngine = aws_stepfunctions.CustomState(self, "StartSyncExecutionEvalEngine",
             state_json=state_json['States']['StartSyncExecutionEvalEngine']
         )
+        # ChoiceEvalEngineStatus = aws_stepfunctions.CustomState(self, "ChoiceEvalEngineStatus",
+        #     state_json=state_json['States']['ChoiceEvalEngineStatus']
+        # )
+        Succeed = aws_stepfunctions.Succeed(self, "Succeed")
+        Fail = aws_stepfunctions.Fail(self, "Fail")
+        ChoiceEvalEngineStatus = aws_stepfunctions.Choice(self, "ChoiceEvalEngineStatus")
         
-        chain = aws_stepfunctions.Chain.start(ListTemplates).next(ScatterTemplates).next(GatherTemplates).next(FormatEvalEngineInput).next(StartSyncExecutionEvalEngine)
+        condition = aws_stepfunctions.Condition.string_equals("$.StartSyncExecutionEvalEngine.Status", "SUCCEEDED")
+        
+        chain = aws_stepfunctions.Chain.start(ListTemplates).next(ScatterTemplates).next(GatherTemplates).next(FormatEvalEngineInput).next(StartSyncExecutionEvalEngine).next(ChoiceEvalEngineStatus.when(condition, Succeed).otherwise(Fail))
         
         simple_state_machine = aws_stepfunctions.StateMachine(self, "EvalEngineWrapper",
             definition=chain,
