@@ -136,7 +136,7 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                                 "cdk synth",
                                 "ls",
                                 # f'aws s3 sync cdk.out/ s3://{self.bucket_synthed_templates.bucket_name}/$CODEBUILD_INITIATOR --include "*.template.json"'
-                                f'aws s3 sync cdk.out/ {synthed_templates_s3_uri_root} --include "*.template.json"'
+                                f"aws s3 sync cdk.out/ {synthed_templates_s3_uri_root} --include '*.template.json'"
                             ],
                         },
                     },
@@ -255,6 +255,16 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                 ],
             )
         )
+        role_eval_engine_wrapper.add_to_policy(
+            aws_iam.PolicyStatement(
+                actions=[
+                    "states:StartSyncExecution",
+                ],
+                resources=[
+                    control_broker_sfn_invoke_arn
+                ],
+            )
+        )
         # role_eval_engine_wrapper.add_to_policy( # required for EXPRESS
         #     aws_iam.PolicyStatement(
         #         actions=[
@@ -336,31 +346,14 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                     "Next":"ScatterTemplates",
                     "ResultPath": "$.ListTemplates",
                     "Resource": "arn:aws:states:::aws-sdk:s3:listObjectsV2",
-                    # "ResultSelector": {"Items.$": "$.Items"},
                     "Parameters": {
                         "Bucket" : s3_uri_to_bucket(Uri=synthed_templates_s3_uri_root),
                         "Prefix" : s3_uri_to_key(Uri=synthed_templates_s3_uri_root)
                     }
                 },
-                # "GatherTemplates": {
-                #     "Type": "Task",
-                #     "End":True,
-                #     "ResultPath": "$.GatherTemplates",
-                #     "Resource": "arn:aws:states:::lambda:invoke",
-                #     "ResultSelector": {
-                #         "Templates.$": "$.Payload"
-                #     },
-                #     "Parameters": {
-                #         "FunctionName": lambda_list_comprehension.function_name,
-                #         "Payload": {
-                #             "Key": "Key",
-                #             "List.$": "$.ListTemplates.Contents"
-                #         },
-                #     },
-                # }
                 "ScatterTemplates": {
                     "Type": "Map",
-                    "End":True,
+                    "Next":"GatherTemplates",
                     "ResultPath": "$.ScatterTemplates",
                     "ItemsPath": "$.ListTemplates.Contents",
                     "Parameters": {
@@ -368,8 +361,16 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                         "MapIndex.$": "$$.Map.Item.Index",
                     },
                     "Iterator": {
-                        "StartAt": "WriteTemplateToDDB",
+                        "StartAt": "TemplateKeyToList",
                         "States": {
+                            "TemplateKeyToList": {
+                                "Type":"Pass",
+                                "Next":"WriteTemplateToDDB",
+                                "ResultPath": "$.TemplateKeyToList",
+                                "Parameters": {
+                                    "TemplateKeyAsList.$": "States.Array($.TemplateKey)"
+                                },
+                            },
                             "WriteTemplateToDDB": {
                                 "Type":"Task",
                                 "End":True,
@@ -386,56 +387,80 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                                         },
                                         "sk": {
                                             "S": "Templates"
-                                            # "S.$": "$.TemplateKey"
-                                            # "S.$": "$.MapIndex"
                                         },
-                                    },
-                                    "ExpressionAttributeNames": {
-                                        "#keys": "Keys",
                                     },
                                     "ExpressionAttributeValues": {
                                         ":key": {
-                                            "SS": ["$.TemplateKey"]
+                                            "SS.$": "$.TemplateKeyToList.TemplateKeyAsList"
                                         },
                                     },
-                                    "UpdateExpression": "SET list_append(#keys, :key)"
+                                    "UpdateExpression": "add TemplateKeys :key"
                                 }
                             }
                         }
                     }
                 },
-                # "GatherTemplates": {
-                #     "Type":"Task",
-                #     "End":True,
-                #     "ResultPath": "$.GatherTemplates",
-                #     "Resource": "arn:aws:states:::aws-sdk:dynamodb:query",
-                #     "ResultSelector": {
-                #         "Templates.$": "$.Items"
-                #     },
-                #     "Parameters": {
-                #         "TableName": self.table_eval_internal_state.table_name,
-                #         "ExpressionAttributeValues" : {
-                #             ":pk" : {
-                #                 "S.$": "$$.Execution.Id"
-                #             }
-                #         },
-                #         "KeyConditionExpression" : "pk = :pk"
-                #     }
-                # }
+                "GatherTemplates": {
+                    "Type":"Task",
+                    "Next": "FormatEvalEngineInput",
+                    "ResultPath": "$.GatherTemplates",
+                    "Resource": "arn:aws:states:::aws-sdk:dynamodb:query",
+                    "ResultSelector": {
+                        "Templates.$": "$.Items[0].TemplateKeys.Ss"
+                    },
+                    "Parameters": {
+                        "TableName": self.table_eval_internal_state.table_name,
+                        "ExpressionAttributeValues" : {
+                            ":pk" : {
+                                "S.$": "$$.Execution.Id"
+                            }
+                        },
+                        "KeyConditionExpression" : "pk = :pk"
+                    }
+                },
+                "FormatEvalEngineInput": {
+                    "Type": "Pass",
+                    "Next": "StartSyncExecutionEvalEngine",
+                    "ResultPath": "$.FormatEvalEngineInput",
+                    "Parameters": {
+                        "Input": {
+                            "Bucket": self.bucket_synthed_templates.bucket_name,
+                            "Keys.$": "$$.GatherTemplates.Templates",
+                        }
+                    }
+                },
+                "StartSyncExecutionEvalEngine": {
+                    "Type": "Task",
+                    "End": True,
+                    "ResultPath": "$.StartSyncExecutionEvalEngine",
+                    "Resource": "arn:aws:states:::aws-sdk:sfn:startSyncExecution",
+                    "Parameters": {
+                        "StateMachineArn": control_broker_sfn_invoke_arn,
+                        "Input": {
+                            "Template.$": "$.FormatEvalEngineInput.Input",
+                        },
+                    },
+                }
             }
         }
         
         ListTemplates = aws_stepfunctions.CustomState(self, "ListTemplates",
             state_json=state_json['States']['ListTemplates']
         )
-        # GatherTemplates = aws_stepfunctions.CustomState(self, "GatherTemplates",
-        #     state_json=state_json['States']['GatherTemplates']
-        # )
         ScatterTemplates = aws_stepfunctions.CustomState(self, "ScatterTemplates",
             state_json=state_json['States']['ScatterTemplates']
         )
+        GatherTemplates = aws_stepfunctions.CustomState(self, "GatherTemplates",
+            state_json=state_json['States']['GatherTemplates']
+        )
+        FormatEvalEngineInput = aws_stepfunctions.CustomState(self, "FormatEvalEngineInput",
+            state_json=state_json['States']['FormatEvalEngineInput']
+        )
+        StartSyncExecutionEvalEngine = aws_stepfunctions.CustomState(self, "StartSyncExecutionEvalEngine",
+            state_json=state_json['States']['StartSyncExecutionEvalEngine']
+        )
         
-        chain = aws_stepfunctions.Chain.start(ListTemplates).next(ScatterTemplates)
+        chain = aws_stepfunctions.Chain.start(ListTemplates).next(ScatterTemplates).next(GatherTemplates).next(FormatEvalEngineInput).next(StartSyncExecutionEvalEngine)
         
         simple_state_machine = aws_stepfunctions.StateMachine(self, "EvalEngineWrapper",
             definition=chain,
