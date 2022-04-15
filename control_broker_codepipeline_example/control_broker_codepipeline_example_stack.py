@@ -424,8 +424,10 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                     "ResultPath": "$.FormatEvalEngineInput",
                     "Parameters": {
                         "Input": {
-                            "Bucket": self.bucket_synthed_templates.bucket_name,
-                            "Keys.$": "$$.GatherTemplates.Templates",
+                            "CFN": {
+                                "Bucket": self.bucket_synthed_templates.bucket_name,
+                                "Keys.$": "$.GatherTemplates.Templates",
+                            }
                         }
                     }
                 },
@@ -436,10 +438,8 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                     "Resource": "arn:aws:states:::aws-sdk:sfn:startSyncExecution",
                     "Parameters": {
                         "StateMachineArn": control_broker_sfn_invoke_arn,
-                        "Input": {
-                            "Template.$": "$.FormatEvalEngineInput.Input",
-                        },
-                    },
+                        "Input.$": "$.FormatEvalEngineInput.Input"
+                    }
                 }
             }
         }
