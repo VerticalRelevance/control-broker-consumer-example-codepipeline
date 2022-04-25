@@ -161,9 +161,9 @@ class ControlBrokerCodepipelineExampleStack(Stack):
         
         # eval
         
-        self.table_eval_internal_state = aws_dynamodb.Table(
+        self.table_eval_wrapper_internal_state = aws_dynamodb.Table(
             self,
-            "EvalInternalState",
+            "EvalWrapperInternalState",
             partition_key=aws_dynamodb.Attribute(
                 name="pk", type=aws_dynamodb.AttributeType.STRING
             ),
@@ -250,8 +250,8 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                     "dynamodb:Query",
                 ],
                 resources=[
-                    self.table_eval_internal_state.table_arn,
-                    f"{self.table_eval_internal_state.table_arn}/*",
+                    self.table_eval_wrapper_internal_state.table_arn,
+                    f"{self.table_eval_wrapper_internal_state.table_arn}/*",
                 ],
             )
         )
@@ -380,7 +380,7 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                                     "HttpStatusCode.$": "$.SdkHttpMetadata.HttpStatusCode"
                                 },
                                 "Parameters": {
-                                    "TableName": self.table_eval_internal_state.table_name,
+                                    "TableName": self.table_eval_wrapper_internal_state.table_name,
                                     "Key": {
                                         "pk": {
                                             "S.$": "$$.Execution.Id"
@@ -409,7 +409,7 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                         "Templates.$": "$.Items[0].TemplateKeys.Ss"
                     },
                     "Parameters": {
-                        "TableName": self.table_eval_internal_state.table_name,
+                        "TableName": self.table_eval_wrapper_internal_state.table_name,
                         "ExpressionAttributeValues" : {
                             ":pk" : {
                                 "S.$": "$$.Execution.Id"
