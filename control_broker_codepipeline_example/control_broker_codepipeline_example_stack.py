@@ -465,8 +465,8 @@ class ControlBrokerCodepipelineExampleStack(Stack):
             "States": {
                 "SignApigwRequest": {
                     "Type": "Task",
-                    "End": True,
-                    # "Next": "CheckResultsReportExists",
+                    # "End":True,
+                    "Next": "CheckResultsReportExists",
                     "ResultPath": "$.SignApigwRequest",
                     "Resource": "arn:aws:states:::lambda:invoke",
                     "Parameters": {
@@ -551,19 +551,57 @@ class ControlBrokerCodepipelineExampleStack(Stack):
             state_json=states_json['States']['SignApigwRequest']
         )
         
-        # Succeed = aws_stepfunctions.Succeed(self, "Succeed")
-        # Fail = aws_stepfunctions.Fail(self, "Fail")
-        # ChoiceEvalEngineStatus = aws_stepfunctions.Choice(self, "ChoiceEvalEngineStatus")
-        # condition = aws_stepfunctions.Condition.string_equals("$.StartSyncExecutionEvalEngine.Status", "SUCCEEDED")
+        CheckResultsReportExists = aws_stepfunctions.CustomState(self, "CheckResultsReportExists",
+            state_json=states_json['States']['CheckResultsReportExists']
+        )
         
-        chain = aws_stepfunctions.Chain.start(SignApigwRequest)
+        GetResultsReportIsCompliantBoolean = aws_stepfunctions.CustomState(self, "GetResultsReportIsCompliantBoolean",
+            state_json=states_json['States']['GetResultsReportIsCompliantBoolean']
+        )
         
-        # .next(ChoiceEvalEngineStatus.when(condition, Succeed).otherwise(Fail))
+        ResultsReportDoesNotYetExist = aws_stepfunctions.Fail(self, "ResultsReportDoesNotYetExist")
+        
+        CompliantFalse = aws_stepfunctions.Fail(self, "CompliantFalse")
+        
+        CompliantTrue = aws_stepfunctions.Succeed(self, "CompliantTrue")
+        
+        ChoiceIsComplaint = aws_stepfunctions.Choice(self, "ChoiceIsComplaint")
+        
+        condition = aws_stepfunctions.Condition.boolean_equals("$.GetResultsReportIsCompliantBoolean.S3SelectResult.ControlBrokerResultsReport.Evaluation.IsCompliant", True)
+        
+        placeholder = aws_stepfunctions.Succeed(self, "Placeholder")
+        chain = aws_stepfunctions.Chain.start(placeholder)
+        # .next(CheckResultsReportExists).next(GetResultsReportIsCompliantBoolean).next(ChoiceIsComplaint.when(condition, CompliantTrue).otherwise(CompliantFalse))
         
         simple_state_machine = aws_stepfunctions.StateMachine(self, "Consumer2IaCPipeline",
             definition=chain,
             role = role_eval_engine_wrapper
         )
+        
+        # myCfnStateMachine = aws_stepfunctions.StateMachine(self, "Consumer2IaCPipeline",
+        #     tags=[
+        #         aws_stepfunctions.CfnStateMachine.TagsEntryProperty(
+        #             key="key",
+        #             value="value"
+        #         )
+        #     ],
+        # ).node.default_child
+        
+        myCfnStateMachine = simple_state_machine.node.default_child
+        
+        print(f'\ntype(myCfnStateMachine)\n{type(myCfnStateMachine)}')
+        
+        myCfnStateMachine.add_property_override(
+            "Definition",
+            states_json
+        )
+        
+        # myCfnStateMachine.tags=[
+        #     aws_stepfunctions.CfnStateMachine.TagsEntryProperty(
+        #         key="key",
+        #         value="value"
+        #     )
+        # ]
         
         self.action_eval_engine = aws_codepipeline_actions.StepFunctionInvokeAction(
             action_name="Invoke",
