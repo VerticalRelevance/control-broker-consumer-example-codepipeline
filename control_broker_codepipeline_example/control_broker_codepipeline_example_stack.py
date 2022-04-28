@@ -326,7 +326,7 @@ class ControlBrokerCodepipelineExampleStack(Stack):
             key="/".join(path_parts)
             return key
         
-        synth_to_sfn_input_file = "control-broker-consumer-inputs.json"
+        self.synth_to_sfn_input_file = "control-broker-consumer-inputs.json"
             
         build_project_cdk_synth = aws_codebuild.PipelineProject(
             self,
@@ -356,7 +356,7 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                                 # f'aws s3 sync cdk.out/ s3://{self.bucket_synthed_templates.bucket_name}/$CODEBUILD_INITIATOR --include "*.template.json"'
                                 f"aws s3 sync cdk.out/ {synthed_templates_s3_uri_root} --include '*.template.json'",
                                 f"aws s3 cp {parse_cdk_out_to_cb_input_s3_uri} .",
-                                f"python3 {parse_cdk_out_to_cb_input_filename} {synth_to_sfn_input_file}",
+                                f"python3 {parse_cdk_out_to_cb_input_filename} {self.synth_to_sfn_input_file}",
                             ],
                         },
                     },
@@ -465,7 +465,8 @@ class ControlBrokerCodepipelineExampleStack(Stack):
             "States": {
                 "SignApigwRequest": {
                     "Type": "Task",
-                    "Next": "CheckResultsReportExists",
+                    "End": True,
+                    # "Next": "CheckResultsReportExists",
                     "ResultPath": "$.SignApigwRequest",
                     "Resource": "arn:aws:states:::lambda:invoke",
                     "Parameters": {
@@ -571,7 +572,7 @@ class ControlBrokerCodepipelineExampleStack(Stack):
             state_machine_input=aws_codepipeline_actions.StateMachineInput.file_path(
                 aws_codepipeline.ArtifactPath(
                     self.artifact_synthed,
-                    synth_to_sfn_input_file
+                    self.synth_to_sfn_input_file
                 )
             )
         )
