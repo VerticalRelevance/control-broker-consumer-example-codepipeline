@@ -95,13 +95,13 @@ class ControlBrokerCodepipelineExampleStack(Stack):
             self,
             "ParseCdkOutToCBInput",
             sources=[
-                aws_s3_deployment.Source.asset(f"./supplementary_files/synth_utils/{parse_cdk_out_to_cb_input_filename}")
+                aws_s3_deployment.Source.asset(f"./supplementary_files/synth_utils")
             ],
             destination_bucket=self.bucket_synth_utils,
             retain_on_delete=False,
         )
         
-        parse_cdk_out_to_cb_input_s3_uri = f"s3://{self.bucket_synth_utils.bucket_name}/parse_cdk_out_to_cb_input_filename
+        parse_cdk_out_to_cb_input_s3_uri = f"s3://{self.bucket_synth_utils.bucket_name}/{parse_cdk_out_to_cb_input_filename}"
         
         role_synth = aws_iam.Role(
             self,
@@ -174,6 +174,9 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                     },
                 }
             ),
+            environment_variables={
+                "SynthedTemplatesBucket": aws_codebuild.BuildEnvironmentVariable(value=self.bucket_synthed_templates.bucket_name)
+            }
             
         )
 
@@ -514,7 +517,7 @@ class ControlBrokerCodepipelineExampleStack(Stack):
         
         chain = aws_stepfunctions.Chain.start(ListTemplates).next(ScatterTemplates).next(GatherTemplates).next(FormatEvalEngineInput).next(StartSyncExecutionEvalEngine).next(ChoiceEvalEngineStatus.when(condition, Succeed).otherwise(Fail))
         
-        simple_state_machine = aws_stepfunctions.StateMachine(self, "EvalEngineWrapper",
+        simple_state_machine = aws_stepfunctions.StateMachine(self, "Consumer2IaCPipeline",
             definition=chain,
             role = role_eval_engine_wrapper
         )
@@ -530,8 +533,6 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                 )
             )
         )
-        
-
         
         # lambda_eval_engine_wrapper = aws_lambda.Function(
         #     self,
