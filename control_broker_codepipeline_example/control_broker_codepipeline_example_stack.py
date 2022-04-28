@@ -18,6 +18,7 @@ from aws_cdk import (
     aws_stepfunctions,
     aws_logs,
     aws_events,
+    aws_lambda_python_alpha, #experimental
 )
 from constructs import Construct
 
@@ -36,7 +37,6 @@ class ControlBrokerCodepipelineExampleStack(Stack):
     
         self.source()
         self.synth()
-        self.evaluate()
         self.evaluate_wrapper_sfn()
         self.pipeline()
     
@@ -376,83 +376,47 @@ class ControlBrokerCodepipelineExampleStack(Stack):
             outputs=[artifact_synthed],
         )
     
-    def evaluate(self):
-        
-        # eval
-        
-        self.table_eval_wrapper_internal_state = aws_dynamodb.Table(
+    def evaluate_wrapper_sfn_lambdas(self)
+    
+        self.lambda_sign_apigw_request = aws_lambda_python_alpha.PythonFunction(
             self,
-            "EvalWrapperInternalState",
-            partition_key=aws_dynamodb.Attribute(
-                name="pk", type=aws_dynamodb.AttributeType.STRING
-            ),
-            sort_key=aws_dynamodb.Attribute(
-                name="sk", type=aws_dynamodb.AttributeType.STRING
-                # name="sk", type=aws_dynamodb.AttributeType.STRING
-            ),
-            billing_mode=aws_dynamodb.BillingMode.PAY_PER_REQUEST,
-            removal_policy=RemovalPolicy.DESTROY,
+            "SignApigwRequestVAlpha",
+            entry="./supplementary_files/lambdas/sign_apigw_request",
+            runtime= aws_lambda.Runtime.PYTHON_3_9,
+            index="lambda_function.py",
+            handler="lambda_handler",
+            timeout=Duration.seconds(60),
+            memory_size=1024,
+            environment = {
+                "ApigwInvokeUrl" : self.apigw_full_invoke_url
+            },
+            layers=[
+                aws_lambda_python_alpha.PythonLayerVersion(
+                    self,
+                    "aws_requests_auth",
+                    entry="./supplementary_files/lambda_layers/aws_requests_auth",
+                    compatible_runtimes=[
+                        aws_lambda.Runtime.PYTHON_3_9
+                    ]
+                ),
+                aws_lambda_python_alpha.PythonLayerVersion(self,
+                    "requests",
+                    entry="./supplementary_files/lambda_layers/requests",
+                    compatible_runtimes=[
+                        aws_lambda.Runtime.PYTHON_3_9
+                    ]
+                ),
+            ]
         )
-        
-        lambda_list_comprehension = aws_lambda.Function(
-            self,
-            "ListComprehension",
-            runtime=aws_lambda.Runtime.PYTHON_3_9,
-            handler="lambda_function.lambda_handler",
-            timeout=Duration.seconds(10),
-            memory_size=128,
-            code=aws_lambda.Code.from_asset(
-                "./supplementary_files/lambdas/list-comprehension"
-            ),
-        )
-        
-        log_group_eval_engine_wrapper = aws_logs.LogGroup(
-            self,
-            "EvalEngineWrapperSfnLogs",
-            log_group_name="/aws/vendedlogs/states/EvalEngineWrapperSfnLogs",
-            removal_policy=RemovalPolicy.DESTROY,
-        )
+    
+    def evaluate_wrapper_sfn(self):
 
         role_eval_engine_wrapper = aws_iam.Role(
             self,
-            "EvalEngineWrapperSfn",
+            "Consumer2IaCPipelineSfn",
             assumed_by=aws_iam.ServicePrincipal("states.amazonaws.com"),
         )
 
-        role_eval_engine_wrapper.add_to_policy(
-            aws_iam.PolicyStatement(
-                actions=[
-                    # "logs:*",
-                    "logs:CreateLogDelivery",
-                    "logs:GetLogDelivery",
-                    "logs:UpdateLogDelivery",
-                    "logs:DeleteLogDelivery",
-                    "logs:ListLogDeliveries",
-                    "logs:PutResourcePolicy",
-                    "logs:DescribeResourcePolicies",
-                    "logs:DescribeLogGroups",
-                ],
-                resources=[
-                    "*",
-                    log_group_eval_engine_wrapper.log_group_arn,
-                    f"{log_group_eval_engine_wrapper.log_group_arn}*",
-                ],
-            )
-        )
-        role_eval_engine_wrapper.add_to_policy( # required for EXPRESS
-            aws_iam.PolicyStatement(
-                actions=[
-                    "s3:List*",
-                    "s3:Head*",
-                    "s3:Get*",
-                ],
-                resources=[
-                    "*",
-                    self.bucket_synthed_templates.bucket_arn,
-                    f"{self.bucket_synthed_templates.bucket_arn}/*"
-                ],
-            )
-        )
         role_eval_engine_wrapper.add_to_policy(
             aws_iam.PolicyStatement(
                 actions=["lambda:InvokeFunction"],
@@ -462,162 +426,105 @@ class ControlBrokerCodepipelineExampleStack(Stack):
             )
         )
 
-        role_eval_engine_wrapper.add_to_policy(
-            aws_iam.PolicyStatement(
-                actions=[
-                    "dynamodb:UpdateItem",
-                    "dynamodb:Query",
-                ],
-                resources=[
-                    self.table_eval_wrapper_internal_state.table_arn,
-                    f"{self.table_eval_wrapper_internal_state.table_arn}/*",
-                ],
-            )
-        )
-        role_eval_engine_wrapper.add_to_policy(
-            aws_iam.PolicyStatement(
-                actions=[
-                    "states:StartSyncExecution",
-                ],
-                resources=[
-                    control_broker_sfn_invoke_arn
-                ],
-            )
-        )
-
-    def evaluate_wrapper_sfn(self):
-
-        state_json = {
-            "StartAt": "ListTemplates",
+        states_json ={
+            "StartAt": "SignApigwRequest",
             "States": {
-                "ListTemplates": {
+                "SignApigwRequest": {
                     "Type": "Task",
-                    "Next":"ScatterTemplates",
-                    "ResultPath": "$.ListTemplates",
-                    "Resource": "arn:aws:states:::aws-sdk:s3:listObjectsV2",
+                    "Next": "CheckResultsReportExists",
+                    "ResultPath": "$.SignApigwRequest",
+                    "Resource": "arn:aws:states:::lambda:invoke",
                     "Parameters": {
-                        "Bucket" : s3_uri_to_bucket(Uri=synthed_templates_s3_uri_root),
-                        "Prefix" : s3_uri_to_key(Uri=synthed_templates_s3_uri_root)
-                    }
-                },
-                "ScatterTemplates": {
-                    "Type": "Map",
-                    "Next":"GatherTemplates",
-                    "ResultPath": "$.ScatterTemplates",
-                    "ItemsPath": "$.ListTemplates.Contents",
-                    "Parameters": {
-                        "TemplateKey.$": "$$.Map.Item.Value.Key",
-                        "MapIndex.$": "$$.Map.Item.Index",
+                        "FunctionName": self.lambda_sign_apigw_request.function_name,
+                        "Payload.$": "$"
                     },
-                    "Iterator": {
-                        "StartAt": "TemplateKeyToList",
-                        "States": {
-                            "TemplateKeyToList": {
-                                "Type":"Pass",
-                                "Next":"WriteTemplateToDDB",
-                                "ResultPath": "$.TemplateKeyToList",
-                                "Parameters": {
-                                    "TemplateKeyAsList.$": "States.Array($.TemplateKey)"
-                                },
-                            },
-                            "WriteTemplateToDDB": {
-                                "Type":"Task",
-                                "End":True,
-                                "ResultPath": "$.WriteTemplateToDDB",
-                                "Resource": "arn:aws:states:::dynamodb:updateItem",
-                                "ResultSelector": {
-                                    "HttpStatusCode.$": "$.SdkHttpMetadata.HttpStatusCode"
-                                },
-                                "Parameters": {
-                                    "TableName": self.table_eval_wrapper_internal_state.table_name,
-                                    "Key": {
-                                        "pk": {
-                                            "S.$": "$$.Execution.Id"
-                                        },
-                                        "sk": {
-                                            "S": "Templates"
-                                        },
-                                    },
-                                    "ExpressionAttributeValues": {
-                                        ":key": {
-                                            "SS.$": "$.TemplateKeyToList.TemplateKeyAsList"
-                                        },
-                                    },
-                                    "UpdateExpression": "add TemplateKeys :key"
-                                }
-                            }
-                        }
-                    }
-                },
-                "GatherTemplates": {
-                    "Type":"Task",
-                    "Next": "FormatEvalEngineInput",
-                    "ResultPath": "$.GatherTemplates",
-                    "Resource": "arn:aws:states:::aws-sdk:dynamodb:query",
                     "ResultSelector": {
-                        "Templates.$": "$.Items[0].TemplateKeys.Ss"
+                        "Payload.$": "$.Payload"
                     },
-                    "Parameters": {
-                        "TableName": self.table_eval_wrapper_internal_state.table_name,
-                        "ExpressionAttributeValues" : {
-                            ":pk" : {
-                                "S.$": "$$.Execution.Id"
-                            }
-                        },
-                        "KeyConditionExpression" : "pk = :pk"
-                    }
                 },
-                "FormatEvalEngineInput": {
-                    "Type": "Pass",
-                    "Next": "StartSyncExecutionEvalEngine",
-                    "ResultPath": "$.FormatEvalEngineInput",
-                    "Parameters": {
-                        "Input": {
-                            "CFN": {
-                                "Bucket": self.bucket_synthed_templates.bucket_name,
-                                "Keys.$": "$.GatherTemplates.Templates",
-                            }
-                        }
-                    }
-                },
-                "StartSyncExecutionEvalEngine": {
+                "CheckResultsReportExists": {
                     "Type": "Task",
-                    "Next": "ChoiceEvalEngineStatus",
-                    "ResultPath": "$.StartSyncExecutionEvalEngine",
-                    "Resource": "arn:aws:states:::aws-sdk:sfn:startSyncExecution",
+                    "Next": "GetResultsReportIsCompliantBoolean",
+                    "ResultPath": "$.CheckResultsReportExists",
+                    "Resource": "arn:aws:states:::lambda:invoke",
                     "Parameters": {
-                        "StateMachineArn": control_broker_sfn_invoke_arn,
-                        "Input.$": "$.FormatEvalEngineInput.Input"
-                    }
+                        "FunctionName": self.lambda_object_exists.function_name,
+                        "Payload": {
+                            "S3Uri.$":"$.SignApigwRequest.Payload.ControlBrokerRequestStatus.ResultsReportS3Uri"
+                        }
+                    },
+                    "ResultSelector": {
+                        "Payload.$": "$.Payload"
+                    },
+                    "Retry": [
+                        {
+                            "ErrorEquals": [
+                                "ObjectDoesNotExistException"
+                            ],
+                            "IntervalSeconds": 1,
+                            "MaxAttempts": 6,
+                            "BackoffRate": 2.0
+                        }
+                    ],
+                    "Catch": [
+                        {
+                            "ErrorEquals":[
+                                "States.ALL"
+                            ],
+                            "Next": "ResultsReportDoesNotYetExist"
+                        }
+                    ]
                 },
-            }
-        }
+                "ResultsReportDoesNotYetExist": {
+                    "Type":"Fail"
+                },
+                "GetResultsReportIsCompliantBoolean": {
+                    "Type": "Task",
+                    "Next": "ChoiceIsComplaint",
+                    "ResultPath": "$.GetResultsReportIsCompliantBoolean",
+                    "Resource": "arn:aws:states:::lambda:invoke",
+                    "Parameters": {
+                        "FunctionName": self.lambda_s3_select.function_name,
+                        "Payload": {
+                            "S3Uri.$":"$.SignApigwRequest.Payload.ControlBrokerRequestStatus.ResultsReportS3Uri",
+                            "Expression": "SELECT * from S3Object s",
+                        },
+                    },
+                    "ResultSelector": {"S3SelectResult.$": "$.Payload.Selected"},
+                },
+                "ChoiceIsComplaint": {
+                    "Type":"Choice",
+                    "Default":"CompliantFalse",
+                    "Choices":[
+                        {
+                            "Variable":"$.GetResultsReportIsCompliantBoolean.S3SelectResult.ControlBrokerResultsReport.Evaluation.IsCompliant",
+                            "BooleanEquals":True,
+                            "Next":"CompliantTrue"
+                        }
+                    ]
+                },
+                "CompliantTrue": {
+                    "Type":"Succeed"
+                },
+                "CompliantFalse": {
+                    "Type":"Fail"
+                }
+                    }
+                }
+            )
+
+        SignApigwRequest = aws_stepfunctions.CustomState(self, "SignApigwRequest",
+            state_json=states_json['States']['SignApigwRequest']
+        )
         
-        ListTemplates = aws_stepfunctions.CustomState(self, "ListTemplates",
-            state_json=state_json['States']['ListTemplates']
-        )
-        ScatterTemplates = aws_stepfunctions.CustomState(self, "ScatterTemplates",
-            state_json=state_json['States']['ScatterTemplates']
-        )
-        GatherTemplates = aws_stepfunctions.CustomState(self, "GatherTemplates",
-            state_json=state_json['States']['GatherTemplates']
-        )
-        FormatEvalEngineInput = aws_stepfunctions.CustomState(self, "FormatEvalEngineInput",
-            state_json=state_json['States']['FormatEvalEngineInput']
-        )
-        StartSyncExecutionEvalEngine = aws_stepfunctions.CustomState(self, "StartSyncExecutionEvalEngine",
-            state_json=state_json['States']['StartSyncExecutionEvalEngine']
-        )
-        # ChoiceEvalEngineStatus = aws_stepfunctions.CustomState(self, "ChoiceEvalEngineStatus",
-        #     state_json=state_json['States']['ChoiceEvalEngineStatus']
-        # )
-        Succeed = aws_stepfunctions.Succeed(self, "Succeed")
-        Fail = aws_stepfunctions.Fail(self, "Fail")
-        ChoiceEvalEngineStatus = aws_stepfunctions.Choice(self, "ChoiceEvalEngineStatus")
+        # Succeed = aws_stepfunctions.Succeed(self, "Succeed")
+        # Fail = aws_stepfunctions.Fail(self, "Fail")
+        # ChoiceEvalEngineStatus = aws_stepfunctions.Choice(self, "ChoiceEvalEngineStatus")
+        # condition = aws_stepfunctions.Condition.string_equals("$.StartSyncExecutionEvalEngine.Status", "SUCCEEDED")
         
-        condition = aws_stepfunctions.Condition.string_equals("$.StartSyncExecutionEvalEngine.Status", "SUCCEEDED")
+        chain = aws_stepfunctions.Chain.start(SignApigwRequest)
         
-        chain = aws_stepfunctions.Chain.start(ListTemplates).next(ScatterTemplates).next(GatherTemplates).next(FormatEvalEngineInput).next(StartSyncExecutionEvalEngine).next(ChoiceEvalEngineStatus.when(condition, Succeed).otherwise(Fail))
+        # .next(ChoiceEvalEngineStatus.when(condition, Succeed).otherwise(Fail))
         
         simple_state_machine = aws_stepfunctions.StateMachine(self, "Consumer2IaCPipeline",
             definition=chain,
