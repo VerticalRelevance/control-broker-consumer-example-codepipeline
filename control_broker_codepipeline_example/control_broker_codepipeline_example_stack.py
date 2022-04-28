@@ -80,6 +80,29 @@ class ControlBrokerCodepipelineExampleStack(Stack):
         
         # synth
         
+        self.bucket_synth_utils = aws_s3.Bucket(
+            self,
+            "SynthUtils",
+            block_public_access=aws_s3.BlockPublicAccess.BLOCK_ALL,
+            removal_policy=RemovalPolicy.DESTROY,
+            auto_delete_objects=True,
+        )
+
+        
+        parse_cdk_out_to_cb_input_filename = "parse_cdk_out_to_cb_input.py"
+        
+        aws_s3_deployment.BucketDeployment(
+            self,
+            "ParseCdkOutToCBInput",
+            sources=[
+                aws_s3_deployment.Source.asset(f"./supplementary_files/synth_utils/{parse_cdk_out_to_cb_input_filename}")
+            ],
+            destination_bucket=self.bucket_synth_utils,
+            retain_on_delete=False,
+        )
+        
+        parse_cdk_out_to_cb_input_s3_uri = f"s3://{self.bucket_synth_utils.bucket_name}/parse_cdk_out_to_cb_input_filename
+        
         role_synth = aws_iam.Role(
             self,
             "Synth",
@@ -109,6 +132,8 @@ class ControlBrokerCodepipelineExampleStack(Stack):
             bucket=path_parts.pop(0)
             key="/".join(path_parts)
             return key
+        
+        synth_to_sfn_input_file = "control-broker-consumer-inputs.json"
             
         build_project_cdk_synth = aws_codebuild.PipelineProject(
             self,
@@ -137,6 +162,8 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                                 "ls",
                                 # f'aws s3 sync cdk.out/ s3://{self.bucket_synthed_templates.bucket_name}/$CODEBUILD_INITIATOR --include "*.template.json"'
                                 f"aws s3 sync cdk.out/ {synthed_templates_s3_uri_root} --include '*.template.json'",
+                                f"aws s3 cp {parse_cdk_out_to_cb_input_s3_uri} .",
+                                f"python3 {parse_cdk_out_to_cb_input_filename} {synth_to_sfn_input_file}",
                             ],
                         },
                     },
@@ -499,7 +526,7 @@ class ControlBrokerCodepipelineExampleStack(Stack):
             state_machine_input=aws_codepipeline_actions.StateMachineInput.file_path(
                 aws_codepipeline.ArtifactPath(
                     artifact_synthed,
-                    'cdk.out/manifest.json'
+                    synth_to_sfn_input_file
                 )
             )
         )
