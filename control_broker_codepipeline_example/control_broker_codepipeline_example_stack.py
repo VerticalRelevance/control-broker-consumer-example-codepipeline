@@ -136,15 +136,15 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                                 "cdk synth",
                                 "ls",
                                 # f'aws s3 sync cdk.out/ s3://{self.bucket_synthed_templates.bucket_name}/$CODEBUILD_INITIATOR --include "*.template.json"'
-                                f"aws s3 sync cdk.out/ {synthed_templates_s3_uri_root} --include '*.template.json'"
+                                f"aws s3 sync cdk.out/ {synthed_templates_s3_uri_root} --include '*.template.json'",
                             ],
                         },
                     },
-                    # "artifacts": {
-                    #     "files": ["**/*"],
-                    #     "discard-paths": "no",
-                    #     "enable-symlinks": "yes",
-                    # },
+                    "artifacts": {
+                        "files": ["**/*"],
+                        "discard-paths": "no",
+                        "enable-symlinks": "yes",
+                    },
                 }
             ),
             
@@ -496,7 +496,12 @@ class ControlBrokerCodepipelineExampleStack(Stack):
             action_name="Invoke",
             # state_machine=self.sfn_eval_engine_wrapper,
             state_machine=simple_state_machine,
-            # state_machine_input=aws_codepipeline_actions.StateMachineInput.literal({"InvokedByCodePipelineArn": synth_eval_pipeline.pipeline_arn})
+            state_machine_input=aws_codepipeline_actions.StateMachineInput.file_path(
+                aws_codepipeline.ArtifactPath(
+                    artifact_synthed,
+                    'cdk.out/manifest.json'
+                )
+            )
         )
         
 
