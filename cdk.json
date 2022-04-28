@@ -23,6 +23,7 @@
     "@aws-cdk/aws-iam:minimizePolicies": true,
     "@aws-cdk/core:target-partitions": ["aws", "aws-cn"],
     "control-broker/sfn-invoke-arn": "arn:aws:states:us-east-1:899456967600:stateMachine:OuterEvalEngine-5pz6UkNOwOvl",
+    "control-broker/apigw-url":"https://nzji8nx3l6.execute-api.us-east-1.amazonaws.com/",
     "control-broker/template-reader-arns":["arn:aws:iam::899456967600:role/ControlBrokerEvalEngineCd-OpaEvalPythonSubprocessS-I6T8PN6DL85", "arn:aws:iam::899456967600:role/ControlBrokerEvalEngineCd-InnerEvalEngineSfnEF6057-1IXDSB6UNOWG1"]
   }
 }

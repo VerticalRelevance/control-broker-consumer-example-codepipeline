@@ -31,12 +31,18 @@ class ControlBrokerCodepipelineExampleStack(Stack):
         control_broker_template_reader_arns: List[str],
         control_broker_sfn_invoke_arn: str,
         pipeline_ownership_metadata:str,
+        control_broker_apigw_url:str,
         **kwargs,
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
-    
+        
+        self.pipeline_ownership_metadata = pipeline_ownership_metadata
+        self.control_broker_template_reader_arns = control_broker_template_reader_arns
+        self.control_broker_apigw_url = control_broker_apigw_url
+        
         self.source()
         self.synth()
+        self.evaluate_wrapper_sfn_lambdas()
         self.evaluate_wrapper_sfn()
         self.pipeline()
     
@@ -231,13 +237,13 @@ class ControlBrokerCodepipelineExampleStack(Stack):
         )
         self.repo_app_team_cdk.apply_removal_policy(RemovalPolicy.DESTROY)
 
-        artifact_source = aws_codepipeline.Artifact()
+        self.artifact_source = aws_codepipeline.Artifact()
 
-        action_source = aws_codepipeline_actions.CodeCommitSourceAction(
+        self.action_source = aws_codepipeline_actions.CodeCommitSourceAction(
             action_name="CodeCommit",
             repository=self.repo_app_team_cdk,
             branch="main",
-            output=artifact_source,
+            output=self.artifact_source,
         )
         
     def synth(self):
@@ -260,7 +266,7 @@ class ControlBrokerCodepipelineExampleStack(Stack):
 
         # Give read permission to the control broker on the templates we store
         # and pass to the control broker
-        for control_broker_principal_arn in control_broker_template_reader_arns:
+        for control_broker_principal_arn in self.control_broker_template_reader_arns:
             self.bucket_synthed_templates.grant_read(
                 aws_iam.ArnPrincipal(control_broker_principal_arn)
             )
@@ -307,7 +313,7 @@ class ControlBrokerCodepipelineExampleStack(Stack):
             )
         )
 
-        synthed_templates_s3_uri_root = f"s3://{self.bucket_synthed_templates.bucket_name}/{pipeline_ownership_metadata['PipelineId']}/RecentTemplates"
+        synthed_templates_s3_uri_root = f"s3://{self.bucket_synthed_templates.bucket_name}/{self.pipeline_ownership_metadata['PipelineId']}/RecentTemplates"
 
         def s3_uri_to_bucket(*,Uri):
             path_parts=Uri.replace("s3://","").split("/")
@@ -367,20 +373,22 @@ class ControlBrokerCodepipelineExampleStack(Stack):
             
         )
 
-        artifact_synthed = aws_codepipeline.Artifact()
+        self.artifact_synthed = aws_codepipeline.Artifact()
 
-        action_build_cdk_synth = aws_codepipeline_actions.CodeBuildAction(
+        self.action_build_cdk_synth = aws_codepipeline_actions.CodeBuildAction(
             action_name="CodeBuildCdkSynth",
             project=build_project_cdk_synth,
-            input=artifact_source,
-            outputs=[artifact_synthed],
+            input=self.artifact_source,
+            outputs=[self.artifact_synthed],
         )
     
-    def evaluate_wrapper_sfn_lambdas(self)
+    def evaluate_wrapper_sfn_lambdas(self):
     
+        # sign apigw request
+        
         self.lambda_sign_apigw_request = aws_lambda_python_alpha.PythonFunction(
             self,
-            "SignApigwRequestVAlpha",
+            "SignApigwRequest",
             entry="./supplementary_files/lambdas/sign_apigw_request",
             runtime= aws_lambda.Runtime.PYTHON_3_9,
             index="lambda_function.py",
@@ -388,7 +396,7 @@ class ControlBrokerCodepipelineExampleStack(Stack):
             timeout=Duration.seconds(60),
             memory_size=1024,
             environment = {
-                "ApigwInvokeUrl" : self.apigw_full_invoke_url
+                "ApigwInvokeUrl" : self.control_broker_apigw_url
             },
             layers=[
                 aws_lambda_python_alpha.PythonLayerVersion(
@@ -408,6 +416,20 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                 ),
             ]
         )
+        
+        # object exists
+        
+        self.lambda_object_exists = aws_lambda.Function(
+            self,
+            "ObjectExists",
+            runtime=aws_lambda.Runtime.PYTHON_3_9,
+            handler="lambda_function.lambda_handler",
+            timeout=Duration.seconds(60),
+            memory_size=1024,  # todo power-tune
+            code=aws_lambda.Code.from_asset(
+                "./supplementary_files/lambdas/s3_head_object"
+            ),
+        )
     
     def evaluate_wrapper_sfn(self):
 
@@ -421,7 +443,7 @@ class ControlBrokerCodepipelineExampleStack(Stack):
             aws_iam.PolicyStatement(
                 actions=["lambda:InvokeFunction"],
                 resources=[
-                    lambda_list_comprehension.function_arn,
+                    self.lambda_sign_apigw_request.function_arn,
                 ],
             )
         )
@@ -509,9 +531,8 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                 "CompliantFalse": {
                     "Type":"Fail"
                 }
-                    }
-                }
-            )
+            }
+        }
 
         SignApigwRequest = aws_stepfunctions.CustomState(self, "SignApigwRequest",
             state_json=states_json['States']['SignApigwRequest']
@@ -531,13 +552,13 @@ class ControlBrokerCodepipelineExampleStack(Stack):
             role = role_eval_engine_wrapper
         )
         
-        action_eval_engine = aws_codepipeline_actions.StepFunctionInvokeAction(
+        self.action_eval_engine = aws_codepipeline_actions.StepFunctionInvokeAction(
             action_name="Invoke",
             # state_machine=self.sfn_eval_engine_wrapper,
             state_machine=simple_state_machine,
             state_machine_input=aws_codepipeline_actions.StateMachineInput.file_path(
                 aws_codepipeline.ArtifactPath(
-                    artifact_synthed,
+                    self.artifact_synthed,
                     synth_to_sfn_input_file
                 )
             )
@@ -555,13 +576,13 @@ class ControlBrokerCodepipelineExampleStack(Stack):
             ),
             stages=[
                 aws_codepipeline.StageProps(
-                    stage_name="Source", actions=[action_source]
+                    stage_name="Source", actions=[self.action_source]
                 ),
                 aws_codepipeline.StageProps(
-                    stage_name="CdkSynth", actions=[action_build_cdk_synth]
+                    stage_name="CdkSynth", actions=[self.action_build_cdk_synth]
                 ),
                 aws_codepipeline.StageProps(
-                    stage_name="EvalEngine", actions=[action_eval_engine]
+                    stage_name="EvalEngine", actions=[self.action_eval_engine]
                 ),
                 # aws_codepipeline.StageProps(
                 #     stage_name="CdkDeploy", actions=[action_build_cdk_deploy]
