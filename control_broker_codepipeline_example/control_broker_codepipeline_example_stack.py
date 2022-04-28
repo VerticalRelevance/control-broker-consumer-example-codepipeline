@@ -388,7 +388,7 @@ class ControlBrokerCodepipelineExampleStack(Stack):
         
         self.lambda_sign_apigw_request = aws_lambda_python_alpha.PythonFunction(
             self,
-            "SignApigwRequest",
+            "SignApigwRequestVAlpha",
             entry="./supplementary_files/lambdas/sign_apigw_request",
             runtime= aws_lambda.Runtime.PYTHON_3_9,
             index="lambda_function.py",
@@ -425,10 +425,22 @@ class ControlBrokerCodepipelineExampleStack(Stack):
             runtime=aws_lambda.Runtime.PYTHON_3_9,
             handler="lambda_function.lambda_handler",
             timeout=Duration.seconds(60),
-            memory_size=1024,  # todo power-tune
+            memory_size=1024,
             code=aws_lambda.Code.from_asset(
                 "./supplementary_files/lambdas/s3_head_object"
             ),
+        )
+        
+        # s3 select
+        
+        self.lambda_s3_select = aws_lambda.Function(
+            self,
+            "S3Select",
+            runtime=aws_lambda.Runtime.PYTHON_3_9,
+            handler="lambda_function.lambda_handler",
+            timeout=Duration.seconds(60),
+            memory_size=1024,
+            code=aws_lambda.Code.from_asset("./supplementary_files/lambdas/s3_select"),
         )
     
     def evaluate_wrapper_sfn(self):
