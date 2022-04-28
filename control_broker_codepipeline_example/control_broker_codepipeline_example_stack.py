@@ -546,67 +546,35 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                 }
             }
         }
-
-        SignApigwRequest = aws_stepfunctions.CustomState(self, "SignApigwRequest",
-            state_json=states_json['States']['SignApigwRequest']
-        )
         
-        CheckResultsReportExists = aws_stepfunctions.CustomState(self, "CheckResultsReportExists",
-            state_json=states_json['States']['CheckResultsReportExists']
-        )
-        
-        GetResultsReportIsCompliantBoolean = aws_stepfunctions.CustomState(self, "GetResultsReportIsCompliantBoolean",
-            state_json=states_json['States']['GetResultsReportIsCompliantBoolean']
-        )
-        
-        ResultsReportDoesNotYetExist = aws_stepfunctions.Fail(self, "ResultsReportDoesNotYetExist")
-        
-        CompliantFalse = aws_stepfunctions.Fail(self, "CompliantFalse")
-        
-        CompliantTrue = aws_stepfunctions.Succeed(self, "CompliantTrue")
-        
-        ChoiceIsComplaint = aws_stepfunctions.Choice(self, "ChoiceIsComplaint")
-        
-        condition = aws_stepfunctions.Condition.boolean_equals("$.GetResultsReportIsCompliantBoolean.S3SelectResult.ControlBrokerResultsReport.Evaluation.IsCompliant", True)
+        states_json ={
+            "StartAt": "MyAslDefinition",
+            "States": {
+                "MyAslDefinition": {
+                    "Type": "Succeed",
+                }
+            }
+        }
         
         placeholder = aws_stepfunctions.Succeed(self, "Placeholder")
+
         chain = aws_stepfunctions.Chain.start(placeholder)
-        # .next(CheckResultsReportExists).next(GetResultsReportIsCompliantBoolean).next(ChoiceIsComplaint.when(condition, CompliantTrue).otherwise(CompliantFalse))
         
-        simple_state_machine = aws_stepfunctions.StateMachine(self, "Consumer2IaCPipeline",
+        sfn_l2_control_broker_client = aws_stepfunctions.StateMachine(self, "Consumer2IaCPipeline",
             definition=chain,
             role = role_eval_engine_wrapper
         )
         
-        # myCfnStateMachine = aws_stepfunctions.StateMachine(self, "Consumer2IaCPipeline",
-        #     tags=[
-        #         aws_stepfunctions.CfnStateMachine.TagsEntryProperty(
-        #             key="key",
-        #             value="value"
-        #         )
-        #     ],
-        # ).node.default_child
+        sfn_l1_control_broker_client = sfn_l2_control_broker_client.node.default_child
         
-        myCfnStateMachine = simple_state_machine.node.default_child
-        
-        print(f'\ntype(myCfnStateMachine)\n{type(myCfnStateMachine)}')
-        
-        myCfnStateMachine.add_property_override(
-            "Definition",
-            states_json
+        sfn_l1_control_broker_client.add_property_override(
+            "DefinitionString",
+            json.dumps(states_json)
         )
-        
-        # myCfnStateMachine.tags=[
-        #     aws_stepfunctions.CfnStateMachine.TagsEntryProperty(
-        #         key="key",
-        #         value="value"
-        #     )
-        # ]
         
         self.action_eval_engine = aws_codepipeline_actions.StepFunctionInvokeAction(
             action_name="Invoke",
-            # state_machine=self.sfn_eval_engine_wrapper,
-            state_machine=simple_state_machine,
+            state_machine=sfn_l2_control_broker_client,
             state_machine_input=aws_codepipeline_actions.StateMachineInput.file_path(
                 aws_codepipeline.ArtifactPath(
                     self.artifact_synthed,
