@@ -456,6 +456,8 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                 actions=["lambda:InvokeFunction"],
                 resources=[
                     self.lambda_sign_apigw_request.function_arn,
+                    self.lambda_object_exists.function_arn,
+                    self.lambda_s3_select.function_arn
                 ],
             )
         )
@@ -543,15 +545,6 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                 },
                 "CompliantFalse": {
                     "Type":"Fail"
-                }
-            }
-        }
-        
-        states_json ={
-            "StartAt": "MyAslDefinition",
-            "States": {
-                "MyAslDefinition": {
-                    "Type": "Succeed",
                 }
             }
         }
