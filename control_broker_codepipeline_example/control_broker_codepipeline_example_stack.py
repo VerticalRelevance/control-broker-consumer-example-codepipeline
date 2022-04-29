@@ -313,7 +313,13 @@ class ControlBrokerCodepipelineExampleStack(Stack):
             )
         )
 
-        synthed_templates_s3_uri_root = f"s3://{self.bucket_synthed_templates.bucket_name}/{self.pipeline_ownership_metadata['PipelineId']}/RecentTemplates"
+        # synthed templates namespaced to some pipeline owner / app team ID, TODO: determine pipeline metadata strategy
+        
+        # synthed_templates_s3_uri_root = f"s3://{self.bucket_synthed_templates.bucket_name}/{self.pipeline_ownership_metadata['PipelineId']}/RecentTemplates"
+        
+        # synthed templates not namespaced by pipeline owner / app team ID - potential name collisions?
+        
+        synthed_templates_s3_uri_root = f"s3://{self.bucket_synthed_templates.bucket_name}/"
 
         def s3_uri_to_bucket(*,Uri):
             path_parts=Uri.replace("s3://","").split("/")
