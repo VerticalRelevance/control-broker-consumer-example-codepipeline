@@ -30,8 +30,8 @@ class ControlBrokerCodepipelineExampleStack(Stack):
         construct_id: str,
         control_broker_template_reader_arns: List[str],
         control_broker_sfn_invoke_arn: str,
-        pipeline_ownership_metadata:str,
         control_broker_apigw_url:str,
+        pipeline_ownership_metadata:dict,
         **kwargs,
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
@@ -375,7 +375,7 @@ class ControlBrokerCodepipelineExampleStack(Stack):
             ),
             environment_variables={
                 "SynthedTemplatesBucket": aws_codebuild.BuildEnvironmentVariable(value=self.bucket_synthed_templates.bucket_name),
-                "PipelineOwnershipMetadata": json.dumps(self.pipeline_ownership_metadata)
+                "PipelineOwnershipMetadata": aws_codebuild.BuildEnvironmentVariable(value=json.dumps(self.pipeline_ownership_metadata)),
             }
             
         )
