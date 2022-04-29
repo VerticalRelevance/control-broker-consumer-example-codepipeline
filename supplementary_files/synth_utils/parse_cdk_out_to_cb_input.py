@@ -12,6 +12,8 @@ print(f'synthed_template_bucket:\n{synthed_template_bucket}\n{type(synthed_templ
 
 cdk_dir = f'{os.environ["CODEBUILD_SRC_DIR"]}/cdk.out'
 
+pipeline_ownership_metadata = json.loads(os.environ["PipelineOwnershipMetadata"])
+
 templates = []
 
 for root, dirs, files in os.walk(cdk_dir):
@@ -25,7 +27,7 @@ print(f'templates:\n{templates}\n{type(templates)}')
 control_broker_consumer_inputs = {
     "ControlBrokerConsumerInputs":{
         "Bucket": synthed_template_bucket,
-        "ConsumerMetadata": "FIXME",
+        "ConsumerMetadata": pipeline_ownership_metadata,
         "InputKeys":templates
     }
 }

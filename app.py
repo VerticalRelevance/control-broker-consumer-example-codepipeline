@@ -12,7 +12,7 @@ ControlBrokerCodepipelineExampleStack(app, "ControlBrokerCodepipelineExampleStac
     control_broker_template_reader_arns=app.node.try_get_context("control-broker/template-reader-arns"),
     control_broker_sfn_invoke_arn=app.node.try_get_context("control-broker/sfn-invoke-arn"),
     control_broker_apigw_url=app.node.try_get_context("control-broker/apigw-url"),
-    pipeline_ownership_metadata = {'PipelineId':'AppTeam1'}
+    pipeline_ownership_metadata=app.node.try_get_context("control-broker/pipeline-ownership-metadata"),
 )
 
 app.synth()

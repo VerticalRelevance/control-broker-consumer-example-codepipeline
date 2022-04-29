@@ -374,7 +374,8 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                 }
             ),
             environment_variables={
-                "SynthedTemplatesBucket": aws_codebuild.BuildEnvironmentVariable(value=self.bucket_synthed_templates.bucket_name)
+                "SynthedTemplatesBucket": aws_codebuild.BuildEnvironmentVariable(value=self.bucket_synthed_templates.bucket_name),
+                "PipelineOwnershipMetadata": json.dumps(self.pipeline_ownership_metadata)
             }
             
         )
