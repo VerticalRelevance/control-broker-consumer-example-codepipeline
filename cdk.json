@@ -22,17 +22,15 @@
     "@aws-cdk/aws-ec2:uniqueImdsv2TemplateName": true,
     "@aws-cdk/aws-iam:minimizePolicies": true,
     "@aws-cdk/core:target-partitions": ["aws", "aws-cn"],
-    "control-broker/sfn-invoke-arn": "arn:aws:states:us-east-1:899456967600:stateMachine:OuterEvalEngine-ECQEg2OooQHb",
-    "control-broker/apigw-url":"https://q0v2khjg9i.execute-api.us-east-1.amazonaws.com/",
-    "control-broker/template-reader-arns":["arn:aws:iam::899456967600:role/ControlBrokerEvalEngineCd-OpaEvalPythonSubprocessS-1JCUFPOX04K94", "arn:aws:iam::899456967600:role/ControlBrokerEvalEngineCd-InnerEvalEngineSfnEF6057-1NYGOTJEWQZM"],
+    "control-broker/sfn-invoke-arn": "arn:aws:states:us-east-1:899456967600:stateMachine:OuterEvalEngine-omcZufuz7CHD",
+    "control-broker/apigw-url":"https://4ogly66x8c.execute-api.us-east-1.amazonaws.com/",
+    "control-broker/template-reader-arns":["arn:aws:iam::899456967600:role/ControlBrokerEvalEngineCd-OpaEvalPythonSubprocessS-5HOHKN6CBK5A"],
     "control-broker/pipeline-ownership-metadata":{
-      "PipelineOwnershipMetadata": {
-        "BusinessUnit": "unit-b",
-        "BillingCode": "bua-02",
-        "TargetProvisioningEnvironment": "prod-01",
-        "PipelineOwnerName": "Jane Ray",
-        "PipelineOwnerEmail": "j.ray@example.com"
-      }
+      "BusinessUnit": "unit-b",
+      "BillingCode": "bua-02",
+      "TargetProvisioningEnvironment": "prod-01",
+      "PipelineOwnerName": "Jane Ray",
+      "PipelineOwnerEmail": "j.ray@example.com"
     }
   }
 }

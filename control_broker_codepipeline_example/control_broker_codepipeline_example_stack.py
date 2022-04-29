@@ -474,7 +474,6 @@ class ControlBrokerCodepipelineExampleStack(Stack):
             "States": {
                 "SignApigwRequest": {
                     "Type": "Task",
-                    # "End":True,
                     "Next": "CheckResultsReportExists",
                     "ResultPath": "$.SignApigwRequest",
                     "Resource": "arn:aws:states:::lambda:invoke",
