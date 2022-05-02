@@ -29,7 +29,6 @@ class ControlBrokerCodepipelineExampleStack(Stack):
         scope: Construct,
         construct_id: str,
         control_broker_template_reader_arns: List[str],
-        control_broker_sfn_invoke_arn: str,
         control_broker_apigw_url:str,
         pipeline_ownership_metadata:dict,
         **kwargs,
