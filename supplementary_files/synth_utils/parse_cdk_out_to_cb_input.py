@@ -28,7 +28,8 @@ control_broker_consumer_inputs = {
     "ControlBrokerConsumerInputs":{
         "Bucket": synthed_template_bucket,
         "ConsumerMetadata": pipeline_ownership_metadata,
-        "InputKeys":templates
+        "InputKeys":templates,
+        "InputType":"CloudFormationTemplate"
     }
 }
 

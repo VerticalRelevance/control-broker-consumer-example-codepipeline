@@ -454,7 +454,7 @@ class ControlBrokerCodepipelineExampleStack(Stack):
 
         role_eval_engine_wrapper = aws_iam.Role(
             self,
-            "Consumer2IaCPipelineSfn",
+            "CB-Consumer-IaCPipeline-Sfn",
             assumed_by=aws_iam.ServicePrincipal("states.amazonaws.com"),
         )
 

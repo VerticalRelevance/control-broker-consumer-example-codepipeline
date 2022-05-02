@@ -22,9 +22,9 @@
     "@aws-cdk/aws-ec2:uniqueImdsv2TemplateName": true,
     "@aws-cdk/aws-iam:minimizePolicies": true,
     "@aws-cdk/core:target-partitions": ["aws", "aws-cn"],
-    "control-broker/sfn-invoke-arn": "arn:aws:states:us-east-1:899456967600:stateMachine:OuterEvalEngine-omcZufuz7CHD",
-    "control-broker/apigw-url":"https://4ogly66x8c.execute-api.us-east-1.amazonaws.com/",
-    "control-broker/template-reader-arns":["arn:aws:iam::899456967600:role/ControlBrokerEvalEngineCd-OpaEvalPythonSubprocessS-5HOHKN6CBK5A"],
+    "control-broker/sfn-invoke-arn": "arn:aws:states:us-east-1:899456967600:stateMachine:OuterEvalEngine-0q7v1y0v07",
+    "control-broker/apigw-url":"https://0q7v1y0v07.execute-api.us-east-1.amazonaws.com/",
+    "control-broker/template-reader-arns":["arn:aws:iam::899456967600:role/ControlBrokerEvalEngineCd-OpaEvalPythonSubprocessS-118UD1SN3KCRC"],
     "control-broker/pipeline-ownership-metadata":{
       "BusinessUnit": "unit-b",
       "BillingCode": "bua-02",
