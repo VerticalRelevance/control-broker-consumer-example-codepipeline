@@ -287,3 +287,7 @@ add hard-coded value from CBEE output
     "control-broker/sfn-invoke-arn" : ["MyReaderArn1","MyReaderArn2"]
 }
 ```
+
+## setup
+
+pip install aws_cdk.aws_lambda_python_alpha
