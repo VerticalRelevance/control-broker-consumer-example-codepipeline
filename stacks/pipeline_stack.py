@@ -558,7 +558,7 @@ class ControlBrokerCodepipelineExampleStack(Stack):
 
         chain = aws_stepfunctions.Chain.start(placeholder)
         
-        sfn_l2_control_broker_client = aws_stepfunctions.StateMachine(self, "Consumer2IaCPipeline",
+        sfn_l2_control_broker_client = aws_stepfunctions.StateMachine(self, "CB-Consumer-IaCPipeline",
             definition=chain,
             role = role_eval_engine_wrapper
         )

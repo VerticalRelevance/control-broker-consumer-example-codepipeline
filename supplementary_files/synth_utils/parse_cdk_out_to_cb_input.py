@@ -26,10 +26,10 @@ print(f'templates:\n{templates}\n{type(templates)}')
 
 control_broker_consumer_inputs = {
     "ControlBrokerConsumerInputs":{
+        "InputType":"CloudFormationTemplate",
         "Bucket": synthed_template_bucket,
-        "ConsumerMetadata": pipeline_ownership_metadata,
         "InputKeys":templates,
-        "InputType":"CloudFormationTemplate"
+        "ConsumerMetadata": pipeline_ownership_metadata,
     }
 }
 
