@@ -12,6 +12,8 @@ print(f'synthed_template_bucket:\n{synthed_template_bucket}\n{type(synthed_templ
 
 cdk_dir = f'{os.environ["CODEBUILD_SRC_DIR"]}/cdk.out'
 
+build_id = os.environ["CODEBUILD_BUILD_ID"]
+
 pipeline_ownership_metadata = json.loads(os.environ["PipelineOwnershipMetadata"])
 
 templates = []

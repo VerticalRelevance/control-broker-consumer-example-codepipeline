@@ -22,6 +22,8 @@ def lambda_handler(event,context):
     
     full_invoke_url = os.environ.get('ApigwInvokeUrl')
     
+    print(f'full_invoke_url:\n{full_invoke_url}')
+    
     host = get_host(full_invoke_url=full_invoke_url)
     
     auth = BotoAWSRequestsAuth(
