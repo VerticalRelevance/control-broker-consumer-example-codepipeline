@@ -2,6 +2,14 @@ import sys
 import os
 import json
 
+# import boto3
+# from botocore.exceptions import ClientError
+
+# s3 = boto3.client('s3')
+
+# TODO: upload all *.template.json to S3, rather than s3 sync in codebuild
+
+
 first_arg = sys.argv[1]
 print(f'first_arg:\n{first_arg}\n{type(first_arg)}')
 synth_to_sfn_input_file = first_arg

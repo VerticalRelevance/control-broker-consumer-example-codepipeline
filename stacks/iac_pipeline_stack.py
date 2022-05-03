@@ -28,7 +28,7 @@ class ControlBrokerCodepipelineExampleStack(Stack):
         self,
         scope: Construct,
         construct_id: str,
-        control_broker_template_reader_arns: List[str],
+        control_broker_input_reader_arns: List[str],
         control_broker_apigw_url:str,
         pipeline_ownership_metadata:dict,
         **kwargs,
@@ -36,7 +36,7 @@ class ControlBrokerCodepipelineExampleStack(Stack):
         super().__init__(scope, construct_id, **kwargs)
         
         self.pipeline_ownership_metadata = pipeline_ownership_metadata
-        self.control_broker_template_reader_arns = control_broker_template_reader_arns
+        self.control_broker_input_reader_arns = control_broker_input_reader_arns
         self.control_broker_apigw_url = control_broker_apigw_url
         
         self.source()
@@ -265,7 +265,7 @@ class ControlBrokerCodepipelineExampleStack(Stack):
 
         # Give read permission to the control broker on the templates we store
         # and pass to the control broker
-        for control_broker_principal_arn in self.control_broker_template_reader_arns:
+        for control_broker_principal_arn in self.control_broker_input_reader_arns:
             self.bucket_synthed_templates.grant_read(
                 aws_iam.ArnPrincipal(control_broker_principal_arn)
             )
