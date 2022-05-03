@@ -1,6 +1,6 @@
 # Control Broker CodePipeline Example Use Case
 
-This repository shows off one use case of the [VR Control Broker]() by
+This repository shows off one use case of the [VR Control Broker](https://github.com/VerticalRelevance/control-broker) by
 walking the user through building a pipeline to
 continuously evaluate the IaC pushed to a repository by an application team, and
 then making changes to the Policy as Code and the fake application and observing
@@ -276,18 +276,14 @@ apply the lessons learned here to increasingly sophisticated applications and
 security policies.
 
 
-# buildme 4.12.22
+# buildme 5.3.22
 
 ## cdk.json
 
-add hard-coded value from CBEE output
+add hard-coded value from `control-broker` deployment output
 ```
 {
-    "control-broker/template-reader-arns":"MySfnArn"
-    "control-broker/sfn-invoke-arn" : ["MyReaderArn1","MyReaderArn2"]
+    "control-broker/apigw-url":"MY_URL"
+    "control-broker/sfn-invoke-arn" : ["MY_ARN"]
 }
 ```
-
-## setup
-
-pip install aws_cdk.aws_lambda_python_alpha

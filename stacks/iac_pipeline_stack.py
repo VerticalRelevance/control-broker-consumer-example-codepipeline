@@ -483,6 +483,17 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                     "ResultSelector": {
                         "Payload.$": "$.Payload"
                     },
+                    "Catch": [
+                        {
+                            "ErrorEquals":[
+                                "APIGWNot200Exception"
+                            ],
+                            "Next": "APIGWNot200"
+                        }
+                    ]
+                },
+                "APIGWNot200": {
+                    "Type":"Fail"
                 },
                 "CheckResultsReportExists": {
                     "Type": "Task",

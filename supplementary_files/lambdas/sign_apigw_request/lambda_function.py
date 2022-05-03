@@ -44,11 +44,20 @@ def lambda_handler(event,context):
     
     content = json.loads(r.content)
     
-    r = {
-        'StatusCode':r.status_code,
+    status_code = r.status_code
+    
+    apigw_response = {
+        'StatusCode':status_code,
         'Content': content
     }
     
-    print(f'apigw formatted response:\n{r}')
+    print(f'apigw_response:\n{apigw_response}')
     
-    return content
+    class APIGWNot200Exception(Exception):
+        # caught by invoking SFN
+        pass
+    
+    if status_code != 200:
+        raise APIGWNot200Exception
+    else:
+        return content

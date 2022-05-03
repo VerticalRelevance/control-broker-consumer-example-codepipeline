@@ -3,7 +3,7 @@ import os
 
 import aws_cdk as cdk
 
-from stacks.pipeline_stack import ControlBrokerCodepipelineExampleStack
+from stacks.iac_pipeline_stack import ControlBrokerCodepipelineExampleStack
 
 
 app = cdk.App()
