@@ -7,7 +7,7 @@ from stacks.iac_pipeline_stack import ControlBrokerCodepipelineExampleStack
 
 
 app = cdk.App()
-ControlBrokerCodepipelineExampleStack(app, "ControlBrokerCodepipelineExampleStack",
+ControlBrokerCodepipelineExampleStack(app, "CBConsumerCodepipeline",
     env=cdk.Environment(account=os.getenv('CDK_DEFAULT_ACCOUNT'), region=os.getenv('CDK_DEFAULT_REGION')),
     control_broker_input_reader_arns=app.node.try_get_context("control-broker/input-reader-arns"),
     control_broker_apigw_url=app.node.try_get_context("control-broker/apigw-url"),

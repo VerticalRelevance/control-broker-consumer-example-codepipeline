@@ -22,14 +22,14 @@
     "@aws-cdk/aws-ec2:uniqueImdsv2TemplateName": true,
     "@aws-cdk/aws-iam:minimizePolicies": true,
     "@aws-cdk/core:target-partitions": ["aws", "aws-cn"],
-    "control-broker/apigw-url":"https://pqiqclz4z1.execute-api.us-east-1.amazonaws.com/",
-    "control-broker/input-reader-arns":["arn:aws:iam::446960196218:role/ControlBrokerEvalEngineCd-InputTypeCloudFormationP-19HZNEVBBPQZD"],
     "control-broker/pipeline-ownership-metadata":{
       "BusinessUnit": "unit-b",
       "BillingCode": "bua-02",
       "TargetProvisioningEnvironment": "prod-01",
       "PipelineOwnerName": "Jane Ray",
       "PipelineOwnerEmail": "j.ray@example.com"
-    }
+    },
+    "control-broker/apigw-url":"https://abwio0u72g.execute-api.us-east-1.amazonaws.com/",
+    "control-broker/input-reader-arns":["arn:aws:iam::446960196218:role/ControlBrokerEvalEngineCd-EvaluateCloudFormationTe-15FISJL2UZO4L", "arn:aws:iam::446960196218:role/ControlBrokerEvalEngineCd-PaCEvaluationRouterServi-143NB8VMCYCX7"]
   }
 }

@@ -263,7 +263,7 @@ class ControlBrokerCodepipelineExampleStack(Stack):
             value=self.bucket_synthed_templates.bucket_name,
         )
 
-        # Give read permission to the control broker on the templates we store
+        # Give read permission to the control broker on the Consumer Inputs we store
         # and pass to the control broker
         for control_broker_principal_arn in self.control_broker_input_reader_arns:
             self.bucket_synthed_templates.grant_read(
