@@ -8,6 +8,23 @@ import json
 # s3 = boto3.client('s3')
 
 # TODO: upload all *.template.json to S3, rather than s3 sync in codebuild
+import boto3
+from botocore.exceptions import ClientError
+s3 = boto3.client("s3")
+
+def put_object(bucket,key,object_:dict):
+    try:
+        r = s3.put_object(
+            Bucket = bucket,
+            Key = key,
+            Body = json.dumps(object_)
+        )
+    except ClientError as e:
+        print(f'ClientError:\n{e}')
+        raise
+    else:
+        print(f'no ClientError put_object\nbucket:\n{bucket}\nKey:\n{key}')
+        return True
 
 
 first_arg = sys.argv[1]
@@ -18,34 +35,30 @@ second_arg = sys.argv[2]
 print(f'second_arg:\n{second_arg}\n{type(second_arg)}')
 codepipeline_execution_id = second_arg
 
-# synthed_template_bucket = os.environ['SynthedTemplatesBucket']
-# print(f'synthed_template_bucket:\n{synthed_template_bucket}\n{type(synthed_template_bucket)}')
+synthed_template_bucket = os.environ['SynthedTemplatesBucket']
+print(f'synthed_template_bucket:\n{synthed_template_bucket}\n{type(synthed_template_bucket)}')
 
 
-# cdk_dir = f'{os.environ["CODEBUILD_SRC_DIR"]}/cdk.out'
+cdk_dir = f'{os.environ["CODEBUILD_SRC_DIR"]}/cdk.out'
 
-# build_id = os.environ["CODEBUILD_BUILD_ID"]
+build_id = os.environ["CODEBUILD_BUILD_ID"]
 
-# pipeline_ownership_metadata = json.loads(os.environ["PipelineOwnershipMetadata"])
+templates = []
 
-# templates = []
+for root, dirs, files in os.walk(cdk_dir):
+    for filename in files:
+        path = os.path.join(root, filename)
+        if filename.endswith('.template.json'):
+            templates.append({'TemplatePath':path})
 
-# for root, dirs, files in os.walk(cdk_dir):
-#     for filename in files:
-#         path = os.path.join(root, filename)
-#         if filename.endswith('.template.json'):
-#             templates.append(filename)
+print(f'templates:\n{templates}\n{type(templates)}')
 
-# print(f'templates:\n{templates}\n{type(templates)}')
+codepipeline_context = json.loads(os.environ["PipelineOwnershipMetadata"])
 
-# control_broker_consumer_inputs = {
-#     "ControlBrokerConsumerInputs":{
-#         "InputType":"CloudFormationTemplate",
-#         "Bucket": synthed_template_bucket,
-#         "InputKeys":templates,
-#         "ConsumerMetadata": pipeline_ownership_metadata,
-#     }
-# }
+for template in templates:
+    print(template)
+    
+
 
 codebuild_to_sfn_artifact = {
     "CodeBuildToSfnArtifact": {

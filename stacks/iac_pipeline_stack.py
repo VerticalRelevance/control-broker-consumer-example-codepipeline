@@ -116,7 +116,7 @@ class ControlBrokerCodepipelineExampleStack(Stack):
             retain_on_delete=False,
         )
         
-        parse_cdk_out_to_cb_input_s3_uri = f"s3://{self.bucket_synth_utils.bucket_name}/{parse_cdk_out_to_cb_input_filename}"
+        synth_utils_s3_dir = f"s3://{self.bucket_synth_utils.bucket_name}/"
         
         role_synth = aws_iam.Role(
             self,
@@ -126,11 +126,27 @@ class ControlBrokerCodepipelineExampleStack(Stack):
 
         role_synth.add_to_policy(
             aws_iam.PolicyStatement(
-                not_actions=[
-                    "s3:Delete*",
+                actions=[
+                    "s3:PutObject",
+                    "s3:Get*",
+                    "s3:List*",
                 ],
                 resources=[
-                    "*",
+                    self.bucket_synthed_templates.bucket_name,
+                    self.bucket_synthed_templates.arn_for_objects("*"),
+                ],
+            )
+        )
+        role_synth.add_to_policy(
+            aws_iam.PolicyStatement(
+                actions=[
+                    "s3:GetObject",
+                    "s3:Get*",
+                    "s3:List*",
+                ],
+                resources=[
+                    self.bucket_synth_utils.bucket_name,
+                    self.bucket_synth_utils.arn_for_objects("*"),
                 ],
             )
         )
@@ -164,28 +180,27 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                 {
                     "version": "0.2",
                     "phases": {
-                        # "install": {
-                        #     "on-failure": "ABORT",
-                        #     "commands": [
-                        #         # TODO upgrade node, v10 deprecated
-                        #         "npm install -g typescript",
-                        #         "npm install -g ts-node",
-                        #         "npm install -g aws-cdk",
-                        #         "npm install",
-                        #         "cdk --version",
-                        #     ],
-                        # },
+                        "install": {
+                            "on-failure": "ABORT",
+                            "commands": [
+                                # TODO upgrade node, v10 deprecated
+                                "npm install -g typescript",
+                                "npm install -g ts-node",
+                                "npm install -g aws-cdk",
+                                "npm install",
+                                "cdk --version",
+                            ],
+                        },
                         "build": {
                             "on-failure": "ABORT",
                             "commands": [
                                 "CODEPIPELINE_EXECUTION_ID=$(aws codepipeline get-pipeline-state --region us-east-1 --name ${CODEBUILD_INITIATOR#codepipeline/} --query 'stageStates[?actionStates[?latestExecution.externalExecutionId==`'${CODEBUILD_BUILD_ID}'`]].latestExecution.pipelineExecutionId' --output text)",
                                 "echo $CODEPIPELINE_EXECUTION_ID",
-                                # "ls",
-                                # "cdk synth",
-                                # "ls",
-                                # # f'aws s3 sync cdk.out/ s3://{self.bucket_synthed_templates.bucket_name}/$CODEBUILD_INITIATOR --include "*.template.json"'
-                                # f"aws s3 sync cdk.out/ {synthed_templates_s3_uri_root} --include '*.template.json'",
-                                f"aws s3 cp {parse_cdk_out_to_cb_input_s3_uri} .",
+                                "ls",
+                                "cdk synth",
+                                "ls",
+                                "ls cdk.out",
+                                f"aws s3 sync {synth_utils_s3_dir} .",
                                 f"python3 {parse_cdk_out_to_cb_input_filename} {self.codebuild_to_sfn_artifact_file} $CODEPIPELINE_EXECUTION_ID",
                             ],
                         },
