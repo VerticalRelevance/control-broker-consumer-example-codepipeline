@@ -275,7 +275,21 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                 "./supplementary_files/lambdas/get_object"
             ),
         )
-    
+        
+        # determine if all CodeBuild inputs compliant
+       
+        self.lambda_parse_results_detemine_compliance = aws_lambda.Function(
+            self,
+            "ParseResultsDetermineCompliance",
+            runtime=aws_lambda.Runtime.PYTHON_3_9,
+            handler="lambda_function.lambda_handler",
+            timeout=Duration.seconds(60),
+            memory_size=1024,
+            code=aws_lambda.Code.from_asset(
+                "./supplementary_files/lambdas/parse_results_determine_compliance"
+            ),
+        )
+        
     def evaluate_wrapper_sfn(self):
 
         role_eval_engine_wrapper = aws_iam.Role(
@@ -290,6 +304,7 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                 resources=[
                     self.lambda_sign_apigw_request.function_arn,
                     self.lambda_get_object.function_arn,
+                    self.lambda_parse_results_detemine_compliance.function_arn,
                 ],
             )
         )
@@ -299,7 +314,7 @@ class ControlBrokerCodepipelineExampleStack(Stack):
             "States": {
                 "ForEachCodeBuildInput": {
                     "Type": "Map",
-                    "End": True,
+                    "Next": "ParseResultsDetermineCompliance",
                     "ResultPath": "$.ForEachCodeBuildInput",
                     "ItemsPath": "$.CodeBuildToSfnArtifact.CodeBuildInputs",
                     "Parameters": {
@@ -397,82 +412,41 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                             }
                         }
                     }
+                },
+                "ParseResultsDetermineCompliance": {
+                    "Type": "Task",
+                    "Next": "ChoiceAllCodeBuildInputsCompliant",
+                    "ResultPath": "$.ParseResultsDetermineCompliance",
+                    "Resource": "arn:aws:states:::lambda:invoke",
+                    "Parameters": {
+                        "FunctionName": self.lambda_sign_apigw_request.function_name,
+                        "Payload.$": "$"
+                    },
+                    "ResultSelector": {
+                        "Payload.$": "$.Payload"
+                    },
+                },
+                "ChoiceAllCodeBuildInputsCompliant": {
+                    "Type":"Choice",
+                    "Default":"AllCodeBuildInputsCompliantFalse",
+                    "Choices":[
+                        {
+                            "Variable":"$.ParseResultsDetermineCompliance.Payload.AllCodeBuildInputsCompliant",
+                            "BooleanEquals":True,
+                            "Next":"AllCodeBuildInputsCompliantTrue"
+                        },
+                    ]
+                },
+                "AllCodeBuildInputsCompliantTrue":{
+                    "Type":"Succeed",
+                },
+                "AllCodeBuildInputsCompliantFalse":{
+                    "Type":"Fail",
+                }
+                    
                 }
             }
         }
-        
-        
-        
-        
-        #         "CheckResultsReportExists": {
-        #             "Type": "Task",
-        #             "Next": "GetResultsReportIsCompliantBoolean",
-        #             "ResultPath": "$.CheckResultsReportExists",
-        #             "Resource": "arn:aws:states:::lambda:invoke",
-        #             "Parameters": {
-        #                 "FunctionName": self.lambda_object_exists.function_name,
-        #                 "Payload": {
-        #                     "S3Uri.$":"$.SignApigwRequest.Payload.ControlBrokerRequestStatus.ResultsReportS3Uri"
-        #                 }
-        #             },
-        #             "ResultSelector": {
-        #                 "Payload.$": "$.Payload"
-        #             },
-        #             "Retry": [
-        #                 {
-        #                     "ErrorEquals": [
-        #                         "ObjectDoesNotExistException"
-        #                     ],
-        #                     "IntervalSeconds": 1,
-        #                     "MaxAttempts": 6,
-        #                     "BackoffRate": 2.0
-        #                 }
-        #             ],
-        #             "Catch": [
-        #                 {
-        #                     "ErrorEquals":[
-        #                         "States.ALL"
-        #                     ],
-        #                     "Next": "ResultsReportDoesNotYetExist"
-        #                 }
-        #             ]
-        #         },
-        #         "ResultsReportDoesNotYetExist": {
-        #             "Type":"Fail"
-        #         },
-        #         "GetResultsReportIsCompliantBoolean": {
-        #             "Type": "Task",
-        #             "Next": "ChoiceIsComplaint",
-        #             "ResultPath": "$.GetResultsReportIsCompliantBoolean",
-        #             "Resource": "arn:aws:states:::lambda:invoke",
-        #             "Parameters": {
-        #                 "FunctionName": self.lambda_s3_select.function_name,
-        #                 "Payload": {
-        #                     "S3Uri.$":"$.SignApigwRequest.Payload.ControlBrokerRequestStatus.ResultsReportS3Uri",
-        #                     "Expression": "SELECT * from S3Object s",
-        #                 },
-        #             },
-        #             "ResultSelector": {"S3SelectResult.$": "$.Payload.Selected"},
-        #         },
-        #         "ChoiceIsComplaint": {
-        #             "Type":"Choice",
-        #             "Default":"CompliantFalse",
-        #             "Choices":[
-        #                 {
-        #                     "Variable":"$.GetResultsReportIsCompliantBoolean.S3SelectResult.ControlBrokerResultsReport.Evaluation.IsCompliant",
-        #                     "BooleanEquals":True,
-        #                     "Next":"CompliantTrue"
-        #                 }
-        #             ]
-        #         },
-        #         "CompliantTrue": {
-        #             "Type":"Succeed"
-        #         },
-        #         "CompliantFalse": {
-        #             "Type":"Fail"
-        #         }
-        #     }
-        # }
         
         placeholder = aws_stepfunctions.Succeed(self, "Placeholder")
 
