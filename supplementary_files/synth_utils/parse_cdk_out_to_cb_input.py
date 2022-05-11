@@ -55,9 +55,7 @@ for root, dirs, files in os.walk(cdk_dir):
         
         if filename.endswith('.template.json'):
             
-            uuid = generate_uuid()
-            
-            key = f'{uuid}{filename}'
+            key = f'{codepipeline_execution_id}/{filename}'
             
             item = {
                 'Bucket':synthed_template_bucket,
@@ -77,21 +75,10 @@ print(f'templates:\n{templates}\n{type(templates)}')
 
 codepipeline_context = json.loads(os.environ["PipelineOwnershipMetadata"])
 
-    
-
-
 codebuild_to_sfn_artifact = {
     "CodeBuildToSfnArtifact": {
-        
-        # gather all objects in s3://proposed-iac with prefix of this CodePipelineExecutionId
-        
         "CodePipelineExecutionId":codepipeline_execution_id,
-        
-        # here's sufficient info about the objects to expect to enforce deny-by-default logic
-        
         "Templates":templates
-        
-        # the list of their UUID keys 
     }
 }
 

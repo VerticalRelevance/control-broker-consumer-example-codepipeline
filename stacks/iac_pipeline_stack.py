@@ -18,6 +18,7 @@ from aws_cdk import (
     aws_stepfunctions,
     aws_logs,
     aws_events,
+    aws_sqs,
     aws_lambda_python_alpha, #experimental
 )
 from constructs import Construct
@@ -127,7 +128,7 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                     "s3:List*",
                 ],
                 resources=[
-                    self.bucket_synthed_templates.bucket_name,
+                    self.bucket_synthed_templates.bucket_arn,
                     self.bucket_synthed_templates.arn_for_objects("*"),
                 ],
             )
@@ -140,9 +141,17 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                     "s3:List*",
                 ],
                 resources=[
-                    self.bucket_synth_utils.bucket_name,
+                    self.bucket_synth_utils.bucket_arn,
                     self.bucket_synth_utils.arn_for_objects("*"),
                 ],
+            )
+        )
+        role_synth.add_to_policy(
+            aws_iam.PolicyStatement(
+                actions=[
+                    "codepipeline:GetPipelineState",
+                ],
+                resources=["*"],
             )
         )
 
@@ -287,11 +296,19 @@ class ControlBrokerCodepipelineExampleStack(Stack):
     
     def evaluate_wrapper_sfn(self):
 
+        queue_task_token = aws_sqs.Queue(
+            self,
+            "TaskTokens",
+        )
+        
+
         role_eval_engine_wrapper = aws_iam.Role(
             self,
             "CB-Consumer-IaCPipeline-Sfn",
             assumed_by=aws_iam.ServicePrincipal("states.amazonaws.com"),
         )
+        
+        queue_task_token.grant_send_messages(role_eval_engine_wrapper)
 
         # role_eval_engine_wrapper.add_to_policy(
         #     aws_iam.PolicyStatement(
@@ -303,12 +320,40 @@ class ControlBrokerCodepipelineExampleStack(Stack):
         #         ],
         #     )
         # )
+        # role_eval_engine_wrapper.add_to_policy(
+        #     aws_iam.PolicyStatement(
+        #         actions=["sqs:SendMessage"],
+        #         resources=[
+        #             queue_task_token.queue_arn,
+        #         ],
+        #     )
+        # )
 
         states_json ={
-            "StartAt": "SignApigwRequest",
+            "StartAt": "ForEachCodeBuildInput",
             "States": {
-                "SignApigwRequest": {
-                    "Type": "Succeed",
+                "ForEachCodeBuildInput": {
+                    "Type": "Map",
+                    "End": True,
+                    "ResultPath": "$.ForEachCodeBuildInput",
+                    "ItemsPath": "$.CodeBuildInputs",
+                    "Iterator": {
+                        "StartAt": "ProcessCodeBuildInput",
+                        "States": {
+                            "ProcessCodeBuildInput": {
+                                "Type": "Task",
+                                "End": True,
+                                "Resource": "arn:aws:states:::sqs:sendMessage.waitForTaskToken",
+                                "Parameters": {
+                                    "QueueUrl": queue_task_token.queue_url,
+                                    "MessageBody": {
+                                        "Message.$": "$$.Map.Item.Value",
+                                        "TaskToken.$": "$$.Task.Token"
+                                    }
+                                },
+                            }
+                        }
+                    }
                 }
             }
         }
