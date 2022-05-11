@@ -419,7 +419,7 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                     "ResultPath": "$.ParseResultsDetermineCompliance",
                     "Resource": "arn:aws:states:::lambda:invoke",
                     "Parameters": {
-                        "FunctionName": self.lambda_sign_apigw_request.function_name,
+                        "FunctionName": self.lambda_parse_results_detemine_compliance.function_name,
                         "Payload.$": "$"
                     },
                     "ResultSelector": {
@@ -442,8 +442,6 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                 },
                 "AllCodeBuildInputsCompliantFalse":{
                     "Type":"Fail",
-                }
-                    
                 }
             }
         }
