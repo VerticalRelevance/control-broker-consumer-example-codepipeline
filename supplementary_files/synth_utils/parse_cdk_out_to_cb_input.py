@@ -77,7 +77,10 @@ codebuild_to_sfn_artifact = {
     "CodeBuildToSfnArtifact": {
         "CodePipelineExecutionId":codepipeline_execution_id,
         "CodeBuildInputs":templates,
-        "Context": json.loads(os.environ["PipelineOwnershipMetadata"])
+        "Context": {
+            "EnvironmentEvaluation":"Prod",
+            "PipelineOwnershipMetadata": json.loads(os.environ["PipelineOwnershipMetadata"]),
+        }
     }
 }
 

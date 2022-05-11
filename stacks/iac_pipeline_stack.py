@@ -262,30 +262,18 @@ class ControlBrokerCodepipelineExampleStack(Stack):
             ]
         )
         
-        # object exists
+        # get object
         
-        self.lambda_object_exists = aws_lambda.Function(
+        self.lambda_get_object = aws_lambda.Function(
             self,
-            "ObjectExists",
+            "GetObject",
             runtime=aws_lambda.Runtime.PYTHON_3_9,
             handler="lambda_function.lambda_handler",
             timeout=Duration.seconds(60),
             memory_size=1024,
             code=aws_lambda.Code.from_asset(
-                "./supplementary_files/lambdas/s3_head_object"
+                "./supplementary_files/lambdas/get_object"
             ),
-        )
-        
-        # s3 select
-        
-        self.lambda_s3_select = aws_lambda.Function(
-            self,
-            "S3Select",
-            runtime=aws_lambda.Runtime.PYTHON_3_9,
-            handler="lambda_function.lambda_handler",
-            timeout=Duration.seconds(60),
-            memory_size=1024,
-            code=aws_lambda.Code.from_asset("./supplementary_files/lambdas/s3_select"),
         )
     
     def evaluate_wrapper_sfn(self):
@@ -301,8 +289,7 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                 actions=["lambda:InvokeFunction"],
                 resources=[
                     self.lambda_sign_apigw_request.function_arn,
-                    # self.lambda_object_exists.function_arn,
-                    # self.lambda_s3_select.function_arn
+                    self.lambda_get_object.function_arn,
                 ],
             )
         )
@@ -320,11 +307,11 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                         "Context.$":"$.CodeBuildToSfnArtifact.Context"
                     },
                     "Iterator": {
-                        "StartAt": "ProcessCodeBuildInput",
+                        "StartAt": "SignApigwRequest",
                         "States": {
-                            "ProcessCodeBuildInput": {
+                            "SignApigwRequest": {
                                 "Type": "Task",
-                                "Next": "CheckResultsReportExists",
+                                "Next": "GetResultsReportIsCompliantBoolean",
                                 "ResultPath": "$.SignApigwRequest",
                                 "Resource": "arn:aws:states:::lambda:invoke",
                                 "Parameters": {
@@ -350,6 +337,43 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                                 ]
                             },
                             "APIGWNot200": {
+                                "Type":"Fail"
+                            },
+                            "GetResultsReportIsCompliantBoolean": {
+                                "Type": "Task",
+                                "End": True,
+                                "ResultPath": "$.GetResultsReportIsCompliantBoolean",
+                                "Resource": "arn:aws:states:::lambda:invoke",
+                                "Parameters": {
+                                    "FunctionName": self.lambda_get_object.function_name,
+                                    "Payload": {
+                                        "Bucket.$":"$.SignApigwRequest.Payload.Content.Response.ResultsReport.Buckets.OutputHandlers[0].Bucket",
+                                        "Key.$":"$.SignApigwRequest.Payload.Content.Response.ResultsReport.Key",
+                                    }
+                                },
+                                "ResultSelector": {
+                                    "Payload.$": "$.Payload"
+                                },
+                                "Retry": [
+                                    {
+                                        "ErrorEquals": [
+                                            "ObjectDoesNotExistException"
+                                        ],
+                                        "IntervalSeconds": 1,
+                                        "MaxAttempts": 8,
+                                        "BackoffRate": 2.0
+                                    }
+                                ],
+                                "Catch": [
+                                    {
+                                        "ErrorEquals":[
+                                            "States.ALL"
+                                        ],
+                                        "Next": "ResultsReportDoesNotYetExist"
+                                    }
+                                ]
+                            },
+                            "ResultsReportDoesNotYetExist": {
                                 "Type":"Fail"
                             },
                         }
