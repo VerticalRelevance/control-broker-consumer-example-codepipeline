@@ -103,9 +103,6 @@ class ControlBrokerCodepipelineExampleStack(Stack):
             auto_delete_objects=True,
         )
 
-        
-        parse_cdk_out_to_cb_input_filename = "parse_cdk_out_to_cb_input.py"
-        
         aws_s3_deployment.BucketDeployment(
             self,
             "ParseCdkOutToCBInput",
@@ -115,8 +112,6 @@ class ControlBrokerCodepipelineExampleStack(Stack):
             destination_bucket=self.bucket_synth_utils,
             retain_on_delete=False,
         )
-        
-        synth_utils_s3_dir = f"s3://{self.bucket_synth_utils.bucket_name}/"
         
         role_synth = aws_iam.Role(
             self,
@@ -200,8 +195,9 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                                 "cdk synth",
                                 "ls",
                                 "ls cdk.out",
-                                f"aws s3 sync {synth_utils_s3_dir} .",
-                                f"python3 {parse_cdk_out_to_cb_input_filename} {self.codebuild_to_sfn_artifact_file} $CODEPIPELINE_EXECUTION_ID",
+                                f"aws s3 sync s3://{self.bucket_synth_utils.bucket_name} .",
+                                "pip install -r requirements.txt",
+                                f"python3 parse_cdk_out_to_cb_input.py {self.codebuild_to_sfn_artifact_file} $CODEPIPELINE_EXECUTION_ID",
                             ],
                         },
                     },

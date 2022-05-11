@@ -1,6 +1,7 @@
 import sys
 import os
 import json
+import uuid
 
 # import boto3
 # from botocore.exceptions import ClientError
@@ -12,20 +13,22 @@ import boto3
 from botocore.exceptions import ClientError
 s3 = boto3.client("s3")
 
-def put_object(bucket,key,object_:dict):
+def upload_file(bucket, key, file_path):
     try:
-        r = s3.put_object(
-            Bucket = bucket,
-            Key = key,
-            Body = json.dumps(object_)
+        r = s3.upload_file(
+            file_path,
+            bucket,
+            key
         )
     except ClientError as e:
         print(f'ClientError:\n{e}')
         raise
     else:
-        print(f'no ClientError put_object\nbucket:\n{bucket}\nKey:\n{key}')
+        print(f'no ClientError upload_file\nbucket:\n{bucket}\nkey:\n{key}\nfile_path\n{file_path}\n')
         return True
 
+def generate_uuid():
+    return str(uuid.uuid4())
 
 first_arg = sys.argv[1]
 print(f'first_arg:\n{first_arg}\n{type(first_arg)}')
@@ -47,16 +50,33 @@ templates = []
 
 for root, dirs, files in os.walk(cdk_dir):
     for filename in files:
+        
         path = os.path.join(root, filename)
+        
         if filename.endswith('.template.json'):
-            templates.append({'TemplatePath':path})
+            
+            uuid = generate_uuid()
+            
+            key = f'{uuid}{filename}'
+            
+            item = {
+                'Bucket':synthed_template_bucket,
+                'Key':key,
+                'Path':path,
+            }
+            
+            upload_file(
+                bucket = item['Bucket'],
+                key = item['Key'],
+                file_path = item['Path']
+            )
+            
+            templates.append(item)
 
 print(f'templates:\n{templates}\n{type(templates)}')
 
 codepipeline_context = json.loads(os.environ["PipelineOwnershipMetadata"])
 
-for template in templates:
-    print(template)
     
 
 
@@ -65,9 +85,11 @@ codebuild_to_sfn_artifact = {
         
         # gather all objects in s3://proposed-iac with prefix of this CodePipelineExecutionId
         
-        "CodePipelineExecutionId":codepipeline_execution_id
+        "CodePipelineExecutionId":codepipeline_execution_id,
         
         # here's sufficient info about the objects to expect to enforce deny-by-default logic
+        
+        "Templates":templates
         
         # the list of their UUID keys 
     }
