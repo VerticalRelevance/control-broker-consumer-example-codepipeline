@@ -341,14 +341,14 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                             },
                             "GetResultsReportIsCompliantBoolean": {
                                 "Type": "Task",
-                                "End": True,
+                                "Next": "ChoiceResultsReportIsCompliantBoolean",
                                 "ResultPath": "$.GetResultsReportIsCompliantBoolean",
                                 "Resource": "arn:aws:states:::lambda:invoke",
                                 "Parameters": {
                                     "FunctionName": self.lambda_get_object.function_name,
                                     "Payload": {
-                                        "Bucket.$":"$.SignApigwRequest.Payload.Content.Response.ResultsReport.Buckets.OutputHandlers[0].Bucket",
-                                        "Key.$":"$.SignApigwRequest.Payload.Content.Response.ResultsReport.Key",
+                                        "Bucket.$":"$.SignApigwRequest.Payload.Response.ResultsReport.Buckets.OutputHandlers[0].Bucket",
+                                        "Key.$":"$.SignApigwRequest.Payload.Response.ResultsReport.Key",
                                     }
                                 },
                                 "ResultSelector": {
@@ -376,6 +376,25 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                             "ResultsReportDoesNotYetExist": {
                                 "Type":"Fail"
                             },
+                            "ChoiceResultsReportIsCompliantBoolean": {
+                                "Type":"Choice",
+                                "Default":"IsCompliantFalse",
+                                "Choices":[
+                                    {
+                                        "Variable":"$.GetResultsReportIsCompliantBoolean.Payload.EvalEngineLambdalith.Evaluation.IsCompliant",
+                                        "BooleanEquals":True,
+                                        "Next":"IsCompliantTrue"
+                                    },
+                                ]
+                            },
+                            "IsCompliantTrue":{
+                                "Type":"Pass",
+                                "End":True
+                            },
+                            "IsCompliantFalse":{
+                                "Type":"Pass",
+                                "End":True
+                            }
                         }
                     }
                 }
