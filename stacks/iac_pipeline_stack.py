@@ -154,7 +154,7 @@ class ControlBrokerCodepipelineExampleStack(Stack):
             key="/".join(path_parts)
             return key
         
-        self.synth_to_sfn_input_file = "control-broker-consumer-inputs.json"
+        self.codebuild_to_sfn_artifact_file = "control-broker-consumer-inputs.json"
             
         build_project_cdk_synth = aws_codebuild.PipelineProject(
             self,
@@ -178,15 +178,15 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                         "build": {
                             "on-failure": "ABORT",
                             "commands": [
-                                "CODEPIPELINE_EXECUTION_ID=$(aws codepipeline get-pipeline-state --region us-east-1 --name ${CODEBUILD_INITIATOR#codepipeline/} --query 'stageStates[?actionStates[?latestExecution.externalExecutionId==`'${CODEBUILD_BUILD_ID}'`]].latestExecution.pipelineExecutionId' --output text)"
-                                "echo $CODEPIPELINE_EXECUTION_ID"
+                                "CODEPIPELINE_EXECUTION_ID=$(aws codepipeline get-pipeline-state --region us-east-1 --name ${CODEBUILD_INITIATOR#codepipeline/} --query 'stageStates[?actionStates[?latestExecution.externalExecutionId==`'${CODEBUILD_BUILD_ID}'`]].latestExecution.pipelineExecutionId' --output text)",
+                                "echo $CODEPIPELINE_EXECUTION_ID",
                                 # "ls",
                                 # "cdk synth",
                                 # "ls",
                                 # # f'aws s3 sync cdk.out/ s3://{self.bucket_synthed_templates.bucket_name}/$CODEBUILD_INITIATOR --include "*.template.json"'
                                 # f"aws s3 sync cdk.out/ {synthed_templates_s3_uri_root} --include '*.template.json'",
-                                # f"aws s3 cp {parse_cdk_out_to_cb_input_s3_uri} .",
-                                f"python3 {parse_cdk_out_to_cb_input_filename} {self.synth_to_sfn_input_file} $$CODEPIPELINE_EXECUTION_ID",
+                                f"aws s3 cp {parse_cdk_out_to_cb_input_s3_uri} .",
+                                f"python3 {parse_cdk_out_to_cb_input_filename} {self.codebuild_to_sfn_artifact_file} $CODEPIPELINE_EXECUTION_ID",
                             ],
                         },
                     },
@@ -282,113 +282,117 @@ class ControlBrokerCodepipelineExampleStack(Stack):
             assumed_by=aws_iam.ServicePrincipal("states.amazonaws.com"),
         )
 
-        role_eval_engine_wrapper.add_to_policy(
-            aws_iam.PolicyStatement(
-                actions=["lambda:InvokeFunction"],
-                resources=[
-                    self.lambda_sign_apigw_request.function_arn,
-                    self.lambda_object_exists.function_arn,
-                    self.lambda_s3_select.function_arn
-                ],
-            )
-        )
+        # role_eval_engine_wrapper.add_to_policy(
+        #     aws_iam.PolicyStatement(
+        #         actions=["lambda:InvokeFunction"],
+        #         resources=[
+        #             self.lambda_sign_apigw_request.function_arn,
+        #             self.lambda_object_exists.function_arn,
+        #             self.lambda_s3_select.function_arn
+        #         ],
+        #     )
+        # )
 
         states_json ={
             "StartAt": "SignApigwRequest",
             "States": {
                 "SignApigwRequest": {
-                    "Type": "Task",
-                    "Next": "CheckResultsReportExists",
-                    "ResultPath": "$.SignApigwRequest",
-                    "Resource": "arn:aws:states:::lambda:invoke",
-                    "Parameters": {
-                        "FunctionName": self.lambda_sign_apigw_request.function_name,
-                        "Payload.$": "$"
-                    },
-                    "ResultSelector": {
-                        "Payload.$": "$.Payload"
-                    },
-                    "Catch": [
-                        {
-                            "ErrorEquals":[
-                                "APIGWNot200Exception"
-                            ],
-                            "Next": "APIGWNot200"
-                        }
-                    ]
-                },
-                "APIGWNot200": {
-                    "Type":"Fail"
-                },
-                "CheckResultsReportExists": {
-                    "Type": "Task",
-                    "Next": "GetResultsReportIsCompliantBoolean",
-                    "ResultPath": "$.CheckResultsReportExists",
-                    "Resource": "arn:aws:states:::lambda:invoke",
-                    "Parameters": {
-                        "FunctionName": self.lambda_object_exists.function_name,
-                        "Payload": {
-                            "S3Uri.$":"$.SignApigwRequest.Payload.ControlBrokerRequestStatus.ResultsReportS3Uri"
-                        }
-                    },
-                    "ResultSelector": {
-                        "Payload.$": "$.Payload"
-                    },
-                    "Retry": [
-                        {
-                            "ErrorEquals": [
-                                "ObjectDoesNotExistException"
-                            ],
-                            "IntervalSeconds": 1,
-                            "MaxAttempts": 6,
-                            "BackoffRate": 2.0
-                        }
-                    ],
-                    "Catch": [
-                        {
-                            "ErrorEquals":[
-                                "States.ALL"
-                            ],
-                            "Next": "ResultsReportDoesNotYetExist"
-                        }
-                    ]
-                },
-                "ResultsReportDoesNotYetExist": {
-                    "Type":"Fail"
-                },
-                "GetResultsReportIsCompliantBoolean": {
-                    "Type": "Task",
-                    "Next": "ChoiceIsComplaint",
-                    "ResultPath": "$.GetResultsReportIsCompliantBoolean",
-                    "Resource": "arn:aws:states:::lambda:invoke",
-                    "Parameters": {
-                        "FunctionName": self.lambda_s3_select.function_name,
-                        "Payload": {
-                            "S3Uri.$":"$.SignApigwRequest.Payload.ControlBrokerRequestStatus.ResultsReportS3Uri",
-                            "Expression": "SELECT * from S3Object s",
-                        },
-                    },
-                    "ResultSelector": {"S3SelectResult.$": "$.Payload.Selected"},
-                },
-                "ChoiceIsComplaint": {
-                    "Type":"Choice",
-                    "Default":"CompliantFalse",
-                    "Choices":[
-                        {
-                            "Variable":"$.GetResultsReportIsCompliantBoolean.S3SelectResult.ControlBrokerResultsReport.Evaluation.IsCompliant",
-                            "BooleanEquals":True,
-                            "Next":"CompliantTrue"
-                        }
-                    ]
-                },
-                "CompliantTrue": {
-                    "Type":"Succeed"
-                },
-                "CompliantFalse": {
-                    "Type":"Fail"
+                    "Type": "Succeed",
                 }
             }
         }
+        #             "Type": "Task",
+        #             "Next": "CheckResultsReportExists",
+        #             "ResultPath": "$.SignApigwRequest",
+        #             "Resource": "arn:aws:states:::lambda:invoke",
+        #             "Parameters": {
+        #                 "FunctionName": self.lambda_sign_apigw_request.function_name,
+        #                 "Payload.$": "$"
+        #             },
+        #             "ResultSelector": {
+        #                 "Payload.$": "$.Payload"
+        #             },
+        #             "Catch": [
+        #                 {
+        #                     "ErrorEquals":[
+        #                         "APIGWNot200Exception"
+        #                     ],
+        #                     "Next": "APIGWNot200"
+        #                 }
+        #             ]
+        #         },
+        #         "APIGWNot200": {
+        #             "Type":"Fail"
+        #         },
+        #         "CheckResultsReportExists": {
+        #             "Type": "Task",
+        #             "Next": "GetResultsReportIsCompliantBoolean",
+        #             "ResultPath": "$.CheckResultsReportExists",
+        #             "Resource": "arn:aws:states:::lambda:invoke",
+        #             "Parameters": {
+        #                 "FunctionName": self.lambda_object_exists.function_name,
+        #                 "Payload": {
+        #                     "S3Uri.$":"$.SignApigwRequest.Payload.ControlBrokerRequestStatus.ResultsReportS3Uri"
+        #                 }
+        #             },
+        #             "ResultSelector": {
+        #                 "Payload.$": "$.Payload"
+        #             },
+        #             "Retry": [
+        #                 {
+        #                     "ErrorEquals": [
+        #                         "ObjectDoesNotExistException"
+        #                     ],
+        #                     "IntervalSeconds": 1,
+        #                     "MaxAttempts": 6,
+        #                     "BackoffRate": 2.0
+        #                 }
+        #             ],
+        #             "Catch": [
+        #                 {
+        #                     "ErrorEquals":[
+        #                         "States.ALL"
+        #                     ],
+        #                     "Next": "ResultsReportDoesNotYetExist"
+        #                 }
+        #             ]
+        #         },
+        #         "ResultsReportDoesNotYetExist": {
+        #             "Type":"Fail"
+        #         },
+        #         "GetResultsReportIsCompliantBoolean": {
+        #             "Type": "Task",
+        #             "Next": "ChoiceIsComplaint",
+        #             "ResultPath": "$.GetResultsReportIsCompliantBoolean",
+        #             "Resource": "arn:aws:states:::lambda:invoke",
+        #             "Parameters": {
+        #                 "FunctionName": self.lambda_s3_select.function_name,
+        #                 "Payload": {
+        #                     "S3Uri.$":"$.SignApigwRequest.Payload.ControlBrokerRequestStatus.ResultsReportS3Uri",
+        #                     "Expression": "SELECT * from S3Object s",
+        #                 },
+        #             },
+        #             "ResultSelector": {"S3SelectResult.$": "$.Payload.Selected"},
+        #         },
+        #         "ChoiceIsComplaint": {
+        #             "Type":"Choice",
+        #             "Default":"CompliantFalse",
+        #             "Choices":[
+        #                 {
+        #                     "Variable":"$.GetResultsReportIsCompliantBoolean.S3SelectResult.ControlBrokerResultsReport.Evaluation.IsCompliant",
+        #                     "BooleanEquals":True,
+        #                     "Next":"CompliantTrue"
+        #                 }
+        #             ]
+        #         },
+        #         "CompliantTrue": {
+        #             "Type":"Succeed"
+        #         },
+        #         "CompliantFalse": {
+        #             "Type":"Fail"
+        #         }
+        #     }
+        # }
         
         placeholder = aws_stepfunctions.Succeed(self, "Placeholder")
 
@@ -412,7 +416,7 @@ class ControlBrokerCodepipelineExampleStack(Stack):
             state_machine_input=aws_codepipeline_actions.StateMachineInput.file_path(
                 aws_codepipeline.ArtifactPath(
                     self.artifact_synthed,
-                    self.synth_to_sfn_input_file
+                    self.codebuild_to_sfn_artifact_file
                 )
             )
         )

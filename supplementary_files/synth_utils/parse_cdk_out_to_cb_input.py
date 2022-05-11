@@ -14,7 +14,7 @@ first_arg = sys.argv[1]
 print(f'first_arg:\n{first_arg}\n{type(first_arg)}')
 codebuild_to_sfn_artifact_file = first_arg
 
-second_arg = sys.argv[1]
+second_arg = sys.argv[2]
 print(f'second_arg:\n{second_arg}\n{type(second_arg)}')
 codepipeline_execution_id = second_arg
 
@@ -48,7 +48,16 @@ codepipeline_execution_id = second_arg
 # }
 
 codebuild_to_sfn_artifact = {
-    "CodePipelineExecutionId":codepipeline_execution_id
+    "CodeBuildToSfnArtifact": {
+        
+        # gather all objects in s3://proposed-iac with prefix of this CodePipelineExecutionId
+        
+        "CodePipelineExecutionId":codepipeline_execution_id
+        
+        # here's sufficient info about the objects to expect to enforce deny-by-default logic
+        
+        # the list of their UUID keys 
+    }
 }
 
 with open(codebuild_to_sfn_artifact_file,'w') as f:
