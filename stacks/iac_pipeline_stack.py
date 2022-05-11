@@ -41,7 +41,7 @@ class ControlBrokerCodepipelineExampleStack(Stack):
         
         self.source()
         self.synth()
-        self.evaluate_wrapper_sfn_lambdas()
+        # self.evaluate_wrapper_sfn_lambdas()
         self.evaluate_wrapper_sfn()
         self.pipeline()
     
@@ -164,27 +164,29 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                 {
                     "version": "0.2",
                     "phases": {
-                        "install": {
-                            "on-failure": "ABORT",
-                            "commands": [
-                                # TODO upgrade node, v10 deprecated
-                                "npm install -g typescript",
-                                "npm install -g ts-node",
-                                "npm install -g aws-cdk",
-                                "npm install",
-                                "cdk --version",
-                            ],
-                        },
+                        # "install": {
+                        #     "on-failure": "ABORT",
+                        #     "commands": [
+                        #         # TODO upgrade node, v10 deprecated
+                        #         "npm install -g typescript",
+                        #         "npm install -g ts-node",
+                        #         "npm install -g aws-cdk",
+                        #         "npm install",
+                        #         "cdk --version",
+                        #     ],
+                        # },
                         "build": {
                             "on-failure": "ABORT",
                             "commands": [
-                                "ls",
-                                "cdk synth",
-                                "ls",
-                                # f'aws s3 sync cdk.out/ s3://{self.bucket_synthed_templates.bucket_name}/$CODEBUILD_INITIATOR --include "*.template.json"'
-                                f"aws s3 sync cdk.out/ {synthed_templates_s3_uri_root} --include '*.template.json'",
-                                f"aws s3 cp {parse_cdk_out_to_cb_input_s3_uri} .",
-                                f"python3 {parse_cdk_out_to_cb_input_filename} {self.synth_to_sfn_input_file}",
+                                "CODEPIPELINE_EXECUTION_ID=$(aws codepipeline get-pipeline-state --region us-east-1 --name ${CODEBUILD_INITIATOR#codepipeline/} --query 'stageStates[?actionStates[?latestExecution.externalExecutionId==`'${CODEBUILD_BUILD_ID}'`]].latestExecution.pipelineExecutionId' --output text)"
+                                "echo $CODEPIPELINE_EXECUTION_ID"
+                                # "ls",
+                                # "cdk synth",
+                                # "ls",
+                                # # f'aws s3 sync cdk.out/ s3://{self.bucket_synthed_templates.bucket_name}/$CODEBUILD_INITIATOR --include "*.template.json"'
+                                # f"aws s3 sync cdk.out/ {synthed_templates_s3_uri_root} --include '*.template.json'",
+                                # f"aws s3 cp {parse_cdk_out_to_cb_input_s3_uri} .",
+                                f"python3 {parse_cdk_out_to_cb_input_filename} {self.synth_to_sfn_input_file} $$CODEPIPELINE_EXECUTION_ID",
                             ],
                         },
                     },

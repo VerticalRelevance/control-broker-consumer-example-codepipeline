@@ -12,37 +12,45 @@ import json
 
 first_arg = sys.argv[1]
 print(f'first_arg:\n{first_arg}\n{type(first_arg)}')
-synth_to_sfn_input_file = first_arg
+codebuild_to_sfn_artifact_file = first_arg
 
-synthed_template_bucket = os.environ['SynthedTemplatesBucket']
-print(f'synthed_template_bucket:\n{synthed_template_bucket}\n{type(synthed_template_bucket)}')
+second_arg = sys.argv[1]
+print(f'second_arg:\n{second_arg}\n{type(second_arg)}')
+codepipeline_execution_id = second_arg
+
+# synthed_template_bucket = os.environ['SynthedTemplatesBucket']
+# print(f'synthed_template_bucket:\n{synthed_template_bucket}\n{type(synthed_template_bucket)}')
 
 
-cdk_dir = f'{os.environ["CODEBUILD_SRC_DIR"]}/cdk.out'
+# cdk_dir = f'{os.environ["CODEBUILD_SRC_DIR"]}/cdk.out'
 
-build_id = os.environ["CODEBUILD_BUILD_ID"]
+# build_id = os.environ["CODEBUILD_BUILD_ID"]
 
-pipeline_ownership_metadata = json.loads(os.environ["PipelineOwnershipMetadata"])
+# pipeline_ownership_metadata = json.loads(os.environ["PipelineOwnershipMetadata"])
 
-templates = []
+# templates = []
 
-for root, dirs, files in os.walk(cdk_dir):
-    for filename in files:
-        path = os.path.join(root, filename)
-        if filename.endswith('.template.json'):
-            templates.append(filename)
+# for root, dirs, files in os.walk(cdk_dir):
+#     for filename in files:
+#         path = os.path.join(root, filename)
+#         if filename.endswith('.template.json'):
+#             templates.append(filename)
 
-print(f'templates:\n{templates}\n{type(templates)}')
+# print(f'templates:\n{templates}\n{type(templates)}')
 
-control_broker_consumer_inputs = {
-    "ControlBrokerConsumerInputs":{
-        "InputType":"CloudFormationTemplate",
-        "Bucket": synthed_template_bucket,
-        "InputKeys":templates,
-        "ConsumerMetadata": pipeline_ownership_metadata,
-    }
+# control_broker_consumer_inputs = {
+#     "ControlBrokerConsumerInputs":{
+#         "InputType":"CloudFormationTemplate",
+#         "Bucket": synthed_template_bucket,
+#         "InputKeys":templates,
+#         "ConsumerMetadata": pipeline_ownership_metadata,
+#     }
+# }
+
+codebuild_to_sfn_artifact = {
+    "CodePipelineExecutionId":codepipeline_execution_id
 }
 
-with open(synth_to_sfn_input_file,'w') as f:
-    json.dump(control_broker_consumer_inputs,f,indent=2)
+with open(codebuild_to_sfn_artifact_file,'w') as f:
+    json.dump(codebuild_to_sfn_artifact,f,indent=2)
     
