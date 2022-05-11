@@ -6,7 +6,7 @@ def lambda_handler(event,context):
 
     print(all_codebuild_inputs)
     
-    all_codebuild_inputs_compliant = not any(all_codebuild_inputs)
+    all_codebuild_inputs_compliant = all(all_codebuild_inputs)
     
     print(f'all_codebuild_inputs_compliant:\n{all_codebuild_inputs_compliant}')
     
