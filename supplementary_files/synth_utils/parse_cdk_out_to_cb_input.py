@@ -73,12 +73,11 @@ for root, dirs, files in os.walk(cdk_dir):
 
 print(f'templates:\n{templates}\n{type(templates)}')
 
-codepipeline_context = json.loads(os.environ["PipelineOwnershipMetadata"])
-
 codebuild_to_sfn_artifact = {
     "CodeBuildToSfnArtifact": {
         "CodePipelineExecutionId":codepipeline_execution_id,
-        "Templates":templates
+        "CodeBuildInputs":templates,
+        "Context": json.loads(os.environ["PipelineOwnershipMetadata"])
     }
 }
 

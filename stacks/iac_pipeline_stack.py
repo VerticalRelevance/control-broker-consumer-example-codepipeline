@@ -42,7 +42,7 @@ class ControlBrokerCodepipelineExampleStack(Stack):
         
         self.source()
         self.synth()
-        # self.evaluate_wrapper_sfn_lambdas()
+        self.evaluate_wrapper_sfn_lambdas()
         self.evaluate_wrapper_sfn()
         self.pipeline()
     
@@ -155,12 +155,6 @@ class ControlBrokerCodepipelineExampleStack(Stack):
             )
         )
 
-        # synthed templates namespaced to some pipeline owner / app team ID, TODO: determine pipeline metadata strategy
-        
-        # synthed_templates_s3_uri_root = f"s3://{self.bucket_synthed_templates.bucket_name}/{self.pipeline_ownership_metadata['PipelineId']}/RecentTemplates"
-        
-        # synthed templates not namespaced by pipeline owner / app team ID - potential name collisions?
-        
         synthed_templates_s3_uri_root = f"s3://{self.bucket_synthed_templates.bucket_name}/"
 
         def s3_uri_to_bucket(*,Uri):
@@ -296,38 +290,22 @@ class ControlBrokerCodepipelineExampleStack(Stack):
     
     def evaluate_wrapper_sfn(self):
 
-        queue_task_token = aws_sqs.Queue(
-            self,
-            "TaskTokens",
-        )
-        
-
         role_eval_engine_wrapper = aws_iam.Role(
             self,
             "CB-Consumer-IaCPipeline-Sfn",
             assumed_by=aws_iam.ServicePrincipal("states.amazonaws.com"),
         )
         
-        queue_task_token.grant_send_messages(role_eval_engine_wrapper)
-
-        # role_eval_engine_wrapper.add_to_policy(
-        #     aws_iam.PolicyStatement(
-        #         actions=["lambda:InvokeFunction"],
-        #         resources=[
-        #             self.lambda_sign_apigw_request.function_arn,
-        #             self.lambda_object_exists.function_arn,
-        #             self.lambda_s3_select.function_arn
-        #         ],
-        #     )
-        # )
-        # role_eval_engine_wrapper.add_to_policy(
-        #     aws_iam.PolicyStatement(
-        #         actions=["sqs:SendMessage"],
-        #         resources=[
-        #             queue_task_token.queue_arn,
-        #         ],
-        #     )
-        # )
+        role_eval_engine_wrapper.add_to_policy(
+            aws_iam.PolicyStatement(
+                actions=["lambda:InvokeFunction"],
+                resources=[
+                    self.lambda_sign_apigw_request.function_arn,
+                    # self.lambda_object_exists.function_arn,
+                    # self.lambda_s3_select.function_arn
+                ],
+            )
+        )
 
         states_json ={
             "StartAt": "ForEachCodeBuildInput",
@@ -336,50 +314,53 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                     "Type": "Map",
                     "End": True,
                     "ResultPath": "$.ForEachCodeBuildInput",
-                    "ItemsPath": "$.CodeBuildInputs",
+                    "ItemsPath": "$.CodeBuildToSfnArtifact.CodeBuildInputs",
+                    "Parameters": {
+                        "CodeBuildInput.$":"$$.Map.Item.Value",
+                        "Context.$":"$.CodeBuildToSfnArtifact.Context"
+                    },
                     "Iterator": {
                         "StartAt": "ProcessCodeBuildInput",
                         "States": {
                             "ProcessCodeBuildInput": {
                                 "Type": "Task",
-                                "End": True,
-                                "Resource": "arn:aws:states:::sqs:sendMessage.waitForTaskToken",
+                                "Next": "CheckResultsReportExists",
+                                "ResultPath": "$.SignApigwRequest",
+                                "Resource": "arn:aws:states:::lambda:invoke",
                                 "Parameters": {
-                                    "QueueUrl": queue_task_token.queue_url,
-                                    "MessageBody": {
-                                        "Message.$": "$$.Map.Item.Value",
-                                        "TaskToken.$": "$$.Task.Token"
+                                    "FunctionName": self.lambda_sign_apigw_request.function_name,
+                                    "Payload": {
+                                        "Input": {
+                                            "Bucket.$":"$.CodeBuildInput.Bucket",
+                                            "Key.$":"$.CodeBuildInput.Key",
+                                        },
+                                        "Context.$":"$.Context" 
                                     }
                                 },
-                            }
+                                "ResultSelector": {
+                                    "Payload.$": "$.Payload"
+                                },
+                                "Catch": [
+                                    {
+                                        "ErrorEquals":[
+                                            "APIGWNot200Exception"
+                                        ],
+                                        "Next": "APIGWNot200"
+                                    }
+                                ]
+                            },
+                            "APIGWNot200": {
+                                "Type":"Fail"
+                            },
                         }
                     }
                 }
             }
         }
-        #             "Type": "Task",
-        #             "Next": "CheckResultsReportExists",
-        #             "ResultPath": "$.SignApigwRequest",
-        #             "Resource": "arn:aws:states:::lambda:invoke",
-        #             "Parameters": {
-        #                 "FunctionName": self.lambda_sign_apigw_request.function_name,
-        #                 "Payload.$": "$"
-        #             },
-        #             "ResultSelector": {
-        #                 "Payload.$": "$.Payload"
-        #             },
-        #             "Catch": [
-        #                 {
-        #                     "ErrorEquals":[
-        #                         "APIGWNot200Exception"
-        #                     ],
-        #                     "Next": "APIGWNot200"
-        #                 }
-        #             ]
-        #         },
-        #         "APIGWNot200": {
-        #             "Type":"Fail"
-        #         },
+        
+        
+        
+        
         #         "CheckResultsReportExists": {
         #             "Type": "Task",
         #             "Next": "GetResultsReportIsCompliantBoolean",
@@ -502,3 +483,4 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                 # ),
             ],
         )
+# 
