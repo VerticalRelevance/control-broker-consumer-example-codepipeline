@@ -252,7 +252,7 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                 ),
             ]
         )
-        self.lambda_output_handler_event_driven.role.add_to_policy(
+        self.lambda_sign_apigw_request.role.add_to_policy(
             aws_iam.PolicyStatement(
                 actions=[
                     "s3:GetObject",
@@ -266,17 +266,17 @@ class ControlBrokerCodepipelineExampleStack(Stack):
             )
         )
         
-        # get object
+        #requests get
         
-        self.lambda_get_object = aws_lambda.Function(
+        self.lambd_requests_get = aws_lambda.Function(
             self,
-            "GetObject",
+            "RequestsGet",
             runtime=aws_lambda.Runtime.PYTHON_3_9,
             handler="lambda_function.lambda_handler",
             timeout=Duration.seconds(60),
             memory_size=1024,
             code=aws_lambda.Code.from_asset(
-                "./supplementary_files/lambdas/get_object"
+                "./supplementary_files/lambdas/requests_get"
             ),
         )
         
@@ -364,10 +364,9 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                                 "ResultPath": "$.GetResultsReportIsCompliantBoolean",
                                 "Resource": "arn:aws:states:::lambda:invoke",
                                 "Parameters": {
-                                    "FunctionName": self.lambda_get_object.function_name,
-                                    "Payload": {
-                                        "Bucket.$":"$.SignApigwRequest.Payload.Response.ResultsReport.Buckets.OutputHandlers[0].Bucket",
-                                        "Key.$":"$.SignApigwRequest.Payload.Response.ResultsReport.Key",
+                                    "FunctionName": self.lambda_requests_get.function_name,
+                                    "Payload":{
+                                        "Url":"$.SignApigwRequest.Payload.Response.ControlBrokerEvaluation.OutputHandlers.CloudFormationOPA.PresignedUrl",
                                     }
                                 },
                                 "ResultSelector": {
