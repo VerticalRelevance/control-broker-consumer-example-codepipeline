@@ -29,7 +29,6 @@
       "PipelineOwnerName": "Jane Ray",
       "PipelineOwnerEmail": "j.ray@example.com"
     },
-    "control-broker/apigw-url":"https://94nxhrl3mj.execute-api.us-east-1.amazonaws.com/CloudFormation",
-    "control-broker/input-reader-arns":["arn:aws:iam::446960196218:role/CBHandlersStackV0x8x0-InvokedByApigwConfigEventSer-1TSD163JSPC6W", "arn:aws:iam::446960196218:role/CBHandlersStackV0x8x0-EvalEngineLambdalithServiceR-7IDEWVHOMEWY"]
+    "control-broker/apigw-url":"https://b9djl10ela.execute-api.us-east-1.amazonaws.com/CloudFormation"
   }
 }
