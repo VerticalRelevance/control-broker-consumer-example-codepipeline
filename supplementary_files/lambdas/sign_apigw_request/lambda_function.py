@@ -59,7 +59,7 @@ def lambda_handler(event,context):
     )
     
     cb_input_object = {
-        "Context":json.loads(PipelineOwnershipMetadata),
+        "Context":json.loads(os.environ['PipelineOwnershipMetadata']),
         "Input": input_to_be_evaluated_object
     }
     

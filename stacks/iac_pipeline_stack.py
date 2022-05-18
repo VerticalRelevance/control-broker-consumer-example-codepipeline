@@ -38,6 +38,24 @@ class ControlBrokerCodepipelineExampleStack(Stack):
         self.pipeline_ownership_metadata = pipeline_ownership_metadata
         self.control_broker_apigw_url = control_broker_apigw_url
         
+        self.layers = {
+            "aws_requests_auth": aws_lambda_python_alpha.PythonLayerVersion(
+                self,
+                "aws_requests_auth",
+                entry="./supplementary_files/lambda_layers/aws_requests_auth",
+                compatible_runtimes=[
+                    aws_lambda.Runtime.PYTHON_3_9
+                ]
+            ),
+            "requests": aws_lambda_python_alpha.PythonLayerVersion(self,
+                "requests",
+                entry="./supplementary_files/lambda_layers/requests",
+                compatible_runtimes=[
+                    aws_lambda.Runtime.PYTHON_3_9
+                ]
+            )
+        }
+        
         self.source()
         self.synth()
         self.evaluate_wrapper_sfn_lambdas()
@@ -236,21 +254,8 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                 "PipelineOwnershipMetadata": json.dumps(self.pipeline_ownership_metadata),
             },
             layers=[
-                aws_lambda_python_alpha.PythonLayerVersion(
-                    self,
-                    "aws_requests_auth",
-                    entry="./supplementary_files/lambda_layers/aws_requests_auth",
-                    compatible_runtimes=[
-                        aws_lambda.Runtime.PYTHON_3_9
-                    ]
-                ),
-                aws_lambda_python_alpha.PythonLayerVersion(self,
-                    "requests",
-                    entry="./supplementary_files/lambda_layers/requests",
-                    compatible_runtimes=[
-                        aws_lambda.Runtime.PYTHON_3_9
-                    ]
-                ),
+                self.layers['requests'],
+                self.layers['aws_requests_auth'],
             ]
         )
         self.lambda_sign_apigw_request.role.add_to_policy(
@@ -279,6 +284,9 @@ class ControlBrokerCodepipelineExampleStack(Stack):
             code=aws_lambda.Code.from_asset(
                 "./supplementary_files/lambdas/requests_get"
             ),
+            layers=[
+                self.layers['requests'],
+            ]
         )
         
         # determine if all CodeBuild inputs compliant
