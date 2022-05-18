@@ -339,7 +339,7 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                         "States": {
                             "SignApigwRequest": {
                                 "Type": "Task",
-                                "Next": "GetResultsReportIsCompliantBoolean",
+                                "Next": "GetIsCompliant",
                                 "ResultPath": "$.SignApigwRequest",
                                 "Resource": "arn:aws:states:::lambda:invoke",
                                 "Parameters": {
@@ -367,10 +367,10 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                             "APIGWNot200": {
                                 "Type":"Fail"
                             },
-                            "GetResultsReportIsCompliantBoolean": {
+                            "GetIsCompliant": {
                                 "Type": "Task",
-                                "Next": "ChoiceResultsReportIsCompliantBoolean",
-                                "ResultPath": "$.GetResultsReportIsCompliantBoolean",
+                                "Next": "ChoiceIsCompliant",
+                                "ResultPath": "$.GetIsCompliant",
                                 "Resource": "arn:aws:states:::lambda:invoke",
                                 "Parameters": {
                                     "FunctionName": self.lambda_requests_get.function_name,
@@ -384,7 +384,7 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                                 "Retry": [
                                     {
                                         "ErrorEquals": [
-                                            "ObjectDoesNotExistException"
+                                            "StatusCodeNot200Exception"
                                         ],
                                         "IntervalSeconds": 1,
                                         "MaxAttempts": 8,
@@ -403,12 +403,12 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                             "ResultsReportDoesNotYetExist": {
                                 "Type":"Fail"
                             },
-                            "ChoiceResultsReportIsCompliantBoolean": {
+                            "ChoiceIsCompliant": {
                                 "Type":"Choice",
                                 "Default":"IsCompliantFalse",
                                 "Choices":[
                                     {
-                                        "Variable":"$.GetResultsReportIsCompliantBoolean.Payload.EvalEngineLambdalith.Evaluation.IsCompliant",
+                                        "Variable":"$.GetIsCompliant.Payload.EvalEngineLambdalith.Evaluation.IsCompliant",
                                         "BooleanEquals":True,
                                         "Next":"IsCompliantTrue"
                                     },
