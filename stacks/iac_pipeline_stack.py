@@ -252,6 +252,19 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                 ),
             ]
         )
+        self.lambda_output_handler_event_driven.role.add_to_policy(
+            aws_iam.PolicyStatement(
+                actions=[
+                    "s3:GetObject",
+                    "s3:GetBucket",
+                    "s3:List*",
+                ],
+                resources=[
+                    self.bucket_synthed_templates.bucket_arn,
+                    self.bucket_synthed_templates.arn_for_objects("*"),
+                ],
+            )
+        )
         
         # get object
         

@@ -8,6 +8,8 @@ from botocore.exceptions import ClientError
 import requests
 from aws_requests_auth.boto_utils import BotoAWSRequestsAuth
 
+s3 = boto3.client('s3')
+
 session = boto3.session.Session()
 region = session.region_name
 account_id = boto3.client('sts').get_caller_identity().get('Account')
@@ -15,6 +17,23 @@ account_id = boto3.client('sts').get_caller_identity().get('Account')
 def get_host(*,full_invoke_url):
     m = re.search('https://(.*)/.*',full_invoke_url)
     return m.group(1)
+
+def get_object(*,bucket,key):
+    
+    try:
+        r = s3.get_object(
+            Bucket = bucket,
+            Key = key
+        )
+    except ClientError as e:
+        print(f'ClientError:\nbucket:\n{bucket}\nkey:\n{key}\n{e}')
+        raise
+    else:
+        print(f'no ClientError get_object:\nbucket:\n{bucket}\nkey:\n{key}')
+        body = r['Body']
+        content = json.loads(body.read().decode('utf-8'))
+        return content
+
     
 def lambda_handler(event,context):
     
@@ -34,7 +53,10 @@ def lambda_handler(event,context):
     
     print(f'BotoAWSRequestsAuth:\n{auth}')
     
-    control_broker_consumer_input = event
+    control_broker_consumer_input = get_object(
+        bucket = event['Input']['Bucket'],
+        key = event['Input']['Key'],
+    )
     
     r = requests.post(
         full_invoke_url,
