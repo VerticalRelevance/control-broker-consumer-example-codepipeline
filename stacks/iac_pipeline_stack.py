@@ -232,7 +232,8 @@ class ControlBrokerCodepipelineExampleStack(Stack):
             timeout=Duration.seconds(60),
             memory_size=1024,
             environment = {
-                "ApigwInvokeUrl" : self.control_broker_apigw_url
+                "ApigwInvokeUrl" : self.control_broker_apigw_url,
+                "PipelineOwnershipMetadata": json.dumps(self.pipeline_ownership_metadata),
             },
             layers=[
                 aws_lambda_python_alpha.PythonLayerVersion(
@@ -268,7 +269,7 @@ class ControlBrokerCodepipelineExampleStack(Stack):
         
         #requests get
         
-        self.lambd_requests_get = aws_lambda.Function(
+        self.lambda_requests_get = aws_lambda.Function(
             self,
             "RequestsGet",
             runtime=aws_lambda.Runtime.PYTHON_3_9,
@@ -307,7 +308,7 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                 actions=["lambda:InvokeFunction"],
                 resources=[
                     self.lambda_sign_apigw_request.function_arn,
-                    self.lambda_get_object.function_arn,
+                    self.lambda_requests_get.function_arn,
                     self.lambda_parse_results_detemine_compliance.function_arn,
                 ],
             )

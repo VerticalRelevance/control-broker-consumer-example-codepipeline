@@ -53,15 +53,20 @@ def lambda_handler(event,context):
     
     print(f'BotoAWSRequestsAuth:\n{auth}')
     
-    control_broker_consumer_input = get_object(
+    input_to_be_evaluated_object = get_object(
         bucket = event['Input']['Bucket'],
         key = event['Input']['Key'],
     )
     
+    cb_input_object = {
+        "Context":json.loads(PipelineOwnershipMetadata),
+        "Input": input_to_be_evaluated_object
+    }
+    
     r = requests.post(
         full_invoke_url,
         auth = auth,
-        json = control_broker_consumer_input
+        json = cb_input_object
     )
     
     print(f'headers:\n{dict(r.request.headers)}')
