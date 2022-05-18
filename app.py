@@ -5,6 +5,7 @@ import aws_cdk as cdk
 
 from stacks.iac_pipeline_stack import ControlBrokerCodepipelineExampleStack
 
+expecting_control_broker_version = "0.10.0"
 
 app = cdk.App()
 ControlBrokerCodepipelineExampleStack(app, "CBConsumerCodepipeline",
