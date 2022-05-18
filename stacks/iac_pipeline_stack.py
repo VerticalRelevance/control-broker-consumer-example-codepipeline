@@ -375,7 +375,7 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                                 "Parameters": {
                                     "FunctionName": self.lambda_requests_get.function_name,
                                     "Payload":{
-                                        "Url":"$.SignApigwRequest.Payload.Response.ControlBrokerEvaluation.OutputHandlers.CloudFormationOPA.PresignedUrl",
+                                        "Url.$":"$.SignApigwRequest.Payload.Response.ControlBrokerEvaluation.OutputHandlers.CloudFormationOPA.PresignedUrl",
                                     }
                                 },
                                 "ResultSelector": {

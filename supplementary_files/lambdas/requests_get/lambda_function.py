@@ -3,17 +3,13 @@ import json
 import requests
 
 def requests_get(url):
-    for i in range(4):
-        r = requests.get(url)
-        try:
-            assert r.status_code == 200
-        except AssertionError:
-            print('sleep')
-            sleep(i**2)
-        else:
-            return json.loads(r.content)
+    r = requests.get(url)
+    try:
+        assert r.status_code == 200
+    except AssertionError:
+        return False
     else:
-        print('failed')
+        return json.loads(r.content)
 
 def lambda_handler(event,context):
     
