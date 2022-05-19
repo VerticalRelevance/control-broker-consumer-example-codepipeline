@@ -303,7 +303,7 @@ class ControlBrokerCodepipelineExampleStack(Stack):
         role_tfplan.add_to_policy(
             aws_iam.PolicyStatement(
                 actions=[
-                    "s3:PutObject",
+                    "s3:PutObject", # not needed for terraform plan?
                     "s3:Get*",
                     "s3:List*",
                 ],

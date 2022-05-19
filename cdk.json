@@ -29,7 +29,7 @@
       "PipelineOwnerName": "Jane Ray",
       "PipelineOwnerEmail": "j.ray@example.com"
     },
-    "control-broker/apigw-url":"https://2sm2qw170c.execute-api.us-east-1.amazonaws.com",
-    "control-broker/source-iac":"Terraform"
+    "control-broker/apigw-url":"https://2sm2qw170c.execute-api.us-east-1.amazonaws.com/CloudFormation",
+    "control-broker/source-iac":"CDK"
   }
 }
