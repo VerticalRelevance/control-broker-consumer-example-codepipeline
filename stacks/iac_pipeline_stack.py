@@ -314,6 +314,9 @@ class ControlBrokerCodepipelineExampleStack(Stack):
         build_project_tfplan = aws_codebuild.PipelineProject(
             self,
             "TFPlanProject",
+            environment = aws_codebuild.BuildEnvironment(
+                build_image = aws_codebuild.LinuxBuildImage.STANDARD_3_0
+            ),
             role = role_tfplan,
             build_spec=aws_codebuild.BuildSpec.from_object(
                 {
@@ -322,12 +325,9 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                         "install": {
                             "on-failure": "ABORT",
                             "commands": [
-                                "rpm -qf /usr/bin/yum",
-                                "which yum",
-                                "yum install -y yum-utils",
-                                "yum-config-manager --add-repo https://rpm.releases.hashicorp.com/AmazonLinux/hashicorp.repo",
-                                "yum -y install terraform",
-                                "terraform -install-autocomplete",
+                                "curl -s -qL -o terraform_install.zip https://releases.hashicorp.com/terraform/1.2.0/terraform_1.2.0_linux_arm.zip",
+                                "unzip terraform_install.zip -d /usr/bin/",
+                                "chmod +x /usr/bin/terraform",
                                 "terraform -version",
                             ],
                         },
