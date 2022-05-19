@@ -295,6 +295,21 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                 resources=[
                     self.bucket_tfplan.bucket_arn,
                     self.bucket_tfplan.arn_for_objects("*"),
+                    self.bucket_codebuild_terraform_backend.bucket_arn,
+                    self.bucket_codebuild_terraform_backend.arn_for_objects("*"),
+                ],
+            )
+        )
+        role_tfplan.add_to_policy(
+            aws_iam.PolicyStatement(
+                actions=[
+                    "s3:PutObject",
+                    "s3:Get*",
+                    "s3:List*",
+                ],
+                resources=[
+                    self.bucket_codebuild_terraform_backend.bucket_arn,
+                    self.bucket_codebuild_terraform_backend.arn_for_objects("*"),
                 ],
             )
         )
@@ -309,6 +324,14 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                     self.bucket_tfplan_utils.bucket_arn,
                     self.bucket_tfplan_utils.arn_for_objects("*"),
                 ],
+            )
+        )
+        role_tfplan.add_to_policy(
+            aws_iam.PolicyStatement(
+                actions=[
+                    "sqs:*", # required by IaC in example app
+                ],
+                resources=["*"]
             )
         )
         role_tfplan.add_to_policy(
@@ -348,9 +371,8 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                                 "CODEPIPELINE_EXECUTION_ID=$(aws codepipeline get-pipeline-state --region us-east-1 --name ${CODEBUILD_INITIATOR#codepipeline/} --query 'stageStates[?actionStates[?latestExecution.externalExecutionId==`'${CODEBUILD_BUILD_ID}'`]].latestExecution.pipelineExecutionId' --output text)",
                                 "echo $CODEPIPELINE_EXECUTION_ID",
                                 "ls",
-                                # "terraform init",
-                                "terraform init -backend-config=\"bucket=${CodeBuildTerraformBackendBucket}\" -backend-config=\"region=us-east-1\" -backend-config=\"encrypt=true\""
-
+                                "echo ${CodeBuildTerraformBackendBucket}",
+                                "terraform init -backend-config=\"bucket=${CodeBuildTerraformBackendBucket}\" -backend-config=\"region=us-east-1\"",
                                 "terraform plan --out tfplan.binary && terraform show -json tfplan.binary > tfplan.json",
                                 "ls",
                                 f"aws s3 sync s3://{self.bucket_tfplan_utils.bucket_name} .",
@@ -369,7 +391,7 @@ class ControlBrokerCodepipelineExampleStack(Stack):
             environment_variables={
                 "TFPlanBucket": aws_codebuild.BuildEnvironmentVariable(value=self.bucket_tfplan.bucket_name),
                 "PipelineOwnershipMetadata": aws_codebuild.BuildEnvironmentVariable(value=json.dumps(self.pipeline_ownership_metadata)),
-                "CodeBuildTerraformBackendBucket": aws_codebuild.BuildEnvironmentVariable(value=self.bucket_codebuild_terraform_backend),
+                "CodeBuildTerraformBackendBucket": aws_codebuild.BuildEnvironmentVariable(value=self.bucket_codebuild_terraform_backend.bucket_name),
             }
             
         )

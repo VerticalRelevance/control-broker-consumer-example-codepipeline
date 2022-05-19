@@ -34,9 +34,9 @@ locals {
   resource_prefix = "cb-example-app-terraform"
 }
 
-data "aws_caller_identity" "i" {}
+# data "aws_caller_identity" "i" {}
 
-data "aws_organizations_organization" "o" {}
+# data "aws_organizations_organization" "o" {}
 
 
 resource "aws_sqs_queue" "a" {
