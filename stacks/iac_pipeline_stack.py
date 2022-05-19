@@ -221,13 +221,13 @@ class ControlBrokerCodepipelineExampleStack(Stack):
             
         )
 
-        self.artifact_synthed = aws_codepipeline.Artifact()
+        self.artifact_built = aws_codepipeline.Artifact()
 
         self.action_build = aws_codepipeline_actions.CodeBuildAction(
             action_name="CodeBuildCdkSynth",
             project=build_project_cdk_synth,
             input=self.artifact_source,
-            outputs=[self.artifact_synthed],
+            outputs=[self.artifact_built],
         )
     
     def plan(self):
@@ -270,7 +270,7 @@ class ControlBrokerCodepipelineExampleStack(Stack):
         
         role_tfplan = aws_iam.Role(
             self,
-            "TFPlan",
+            "TFPlanRole",
             assumed_by=aws_iam.ServicePrincipal("codebuild.amazonaws.com"),
         )
 
@@ -313,7 +313,7 @@ class ControlBrokerCodepipelineExampleStack(Stack):
             
         build_project_tfplan = aws_codebuild.PipelineProject(
             self,
-            "TFPlan",
+            "TFPlanProject",
             role = role_tfplan,
             build_spec=aws_codebuild.BuildSpec.from_object(
                 {
@@ -339,7 +339,7 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                                 "ls",
                                 f"aws s3 sync s3://{self.bucket_tfplan_utils.bucket_name} .",
                                 "pip install -r requirements.txt",
-                                f"python3 parse_cdk_out_to_cb_input.py {self.codebuild_to_sfn_artifact_file} $CODEPIPELINE_EXECUTION_ID",
+                                f"python3 parse_tfplan_to_cb_input.py {self.codebuild_to_sfn_artifact_file} $CODEPIPELINE_EXECUTION_ID",
                             ],
                         },
                     },
@@ -357,13 +357,13 @@ class ControlBrokerCodepipelineExampleStack(Stack):
             
         )
 
-        self.artifact_tfplan = aws_codepipeline.Artifact()
+        self.artifact_built = aws_codepipeline.Artifact()
 
         self.action_build = aws_codepipeline_actions.CodeBuildAction(
             action_name="CodeBuildCdkSynth",
             project=build_project_tfplan,
             input=self.artifact_source,
-            outputs=[self.artifact_tfplan],
+            outputs=[self.artifact_built],
         )
     
     def evaluate_wrapper_sfn_lambdas(self):
@@ -627,7 +627,7 @@ class ControlBrokerCodepipelineExampleStack(Stack):
             state_machine=sfn_l2_control_broker_client,
             state_machine_input=aws_codepipeline_actions.StateMachineInput.file_path(
                 aws_codepipeline.ArtifactPath(
-                    self.artifact_synthed,
+                    self.artifact_built,
                     self.codebuild_to_sfn_artifact_file
                 )
             )
