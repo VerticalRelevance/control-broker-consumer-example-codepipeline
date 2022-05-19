@@ -176,6 +176,9 @@ class ControlBrokerCodepipelineExampleStack(Stack):
         build_project_cdk_synth = aws_codebuild.PipelineProject(
             self,
             "CdkSynth",
+            environment = aws_codebuild.BuildEnvironment(
+                build_image = aws_codebuild.LinuxBuildImage.STANDARD_3_0
+            ),
             role = role_synth,
             build_spec=aws_codebuild.BuildSpec.from_object(
                 {
@@ -325,7 +328,7 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                         "install": {
                             "on-failure": "ABORT",
                             "commands": [
-                                "curl -s -qL -o terraform_install.zip https://releases.hashicorp.com/terraform/1.2.0/terraform_1.2.0_linux_arm.zip",
+                                "curl -s -qL -o terraform_install.zip https://releases.hashicorp.com/terraform/1.2.0/terraform_1.2.0_linux_386.zip",
                                 "unzip terraform_install.zip -d /usr/bin/",
                                 "chmod +x /usr/bin/terraform",
                                 "terraform -version",
