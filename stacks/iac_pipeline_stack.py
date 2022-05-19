@@ -29,14 +29,16 @@ class ControlBrokerCodepipelineExampleStack(Stack):
         self,
         scope: Construct,
         construct_id: str,
-        control_broker_apigw_url:str,
         pipeline_ownership_metadata:dict,
+        control_broker_apigw_url:str,
+        source_iac:str,
         **kwargs,
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
         
         self.pipeline_ownership_metadata = pipeline_ownership_metadata
         self.control_broker_apigw_url = control_broker_apigw_url
+        self.source_iac = source_iac
         
         self.layers = {
             "aws_requests_auth": aws_lambda_python_alpha.PythonLayerVersion(
@@ -57,7 +59,12 @@ class ControlBrokerCodepipelineExampleStack(Stack):
         }
         
         self.source()
-        self.synth()
+        if self.source_iac == "CDK":
+            self.synth()
+        if self.source_iac == "Terraform":
+            self.plan()
+        
+        
         self.evaluate_wrapper_sfn_lambdas()
         self.evaluate_wrapper_sfn()
         self.pipeline()
@@ -71,7 +78,7 @@ class ControlBrokerCodepipelineExampleStack(Stack):
             "ApplicationTeamExampleAppRepository",
             repository_name="ControlBrokerEvalEngine-ApplicationTeam-ExampleApp",
             code=aws_codecommit.Code.from_directory(
-                "./supplementary_files/application_team_example_app", "main"
+                f"./supplementary_files/application_team_example_app/{self.source_iac}", "main"
             ),
         )
         self.repo_app_team_cdk.apply_removal_policy(RemovalPolicy.DESTROY)
@@ -229,7 +236,158 @@ class ControlBrokerCodepipelineExampleStack(Stack):
 
         self.artifact_synthed = aws_codepipeline.Artifact()
 
-        self.action_build_cdk_synth = aws_codepipeline_actions.CodeBuildAction(
+        self.action_build = aws_codepipeline_actions.CodeBuildAction(
+            action_name="CodeBuildCdkSynth",
+            project=build_project_cdk_synth,
+            input=self.artifact_source,
+            outputs=[self.artifact_synthed],
+        )
+    
+    def plan(self):
+        
+        # synthed templates
+
+        self.bucket_tfplan = aws_s3.Bucket(
+            self,
+            "SynthedTemplates",
+            block_public_access=aws_s3.BlockPublicAccess.BLOCK_ALL,
+            removal_policy=RemovalPolicy.DESTROY,
+            auto_delete_objects=True,
+        )
+
+        CfnOutput(
+            self,
+            "SynthedTemplatesBucket",
+            value=self.bucket_tfplan.bucket_name,
+        )
+
+        # synth
+        
+        self.bucket_synth_utils = aws_s3.Bucket(
+            self,
+            "SynthUtils",
+            block_public_access=aws_s3.BlockPublicAccess.BLOCK_ALL,
+            removal_policy=RemovalPolicy.DESTROY,
+            auto_delete_objects=True,
+        )
+
+        aws_s3_deployment.BucketDeployment(
+            self,
+            "ParseCdkOutToCBInput",
+            sources=[
+                aws_s3_deployment.Source.asset(f"./supplementary_files/synth_utils")
+            ],
+            destination_bucket=self.bucket_synth_utils,
+            retain_on_delete=False,
+        )
+        
+        role_synth = aws_iam.Role(
+            self,
+            "Synth",
+            assumed_by=aws_iam.ServicePrincipal("codebuild.amazonaws.com"),
+        )
+
+        role_synth.add_to_policy(
+            aws_iam.PolicyStatement(
+                actions=[
+                    "s3:PutObject",
+                    "s3:Get*",
+                    "s3:List*",
+                ],
+                resources=[
+                    self.bucket_tfplan.bucket_arn,
+                    self.bucket_tfplan.arn_for_objects("*"),
+                ],
+            )
+        )
+        role_synth.add_to_policy(
+            aws_iam.PolicyStatement(
+                actions=[
+                    "s3:GetObject",
+                    "s3:Get*",
+                    "s3:List*",
+                ],
+                resources=[
+                    self.bucket_synth_utils.bucket_arn,
+                    self.bucket_synth_utils.arn_for_objects("*"),
+                ],
+            )
+        )
+        role_synth.add_to_policy(
+            aws_iam.PolicyStatement(
+                actions=[
+                    "codepipeline:GetPipelineState",
+                ],
+                resources=["*"],
+            )
+        )
+
+        tfplan_s3_uri_root = f"s3://{self.bucket_tfplan.bucket_name}/"
+
+        def s3_uri_to_bucket(*,Uri):
+            path_parts=Uri.replace("s3://","").split("/")
+            bucket=path_parts.pop(0)
+            return bucket
+            
+        def s3_uri_to_key(*,Uri):
+            path_parts=Uri.replace("s3://","").split("/")
+            bucket=path_parts.pop(0)
+            key="/".join(path_parts)
+            return key
+        
+        self.codebuild_to_sfn_artifact_file = "control-broker-consumer-inputs.json"
+            
+        build_project_cdk_synth = aws_codebuild.PipelineProject(
+            self,
+            "CdkSynth",
+            role = role_synth,
+            build_spec=aws_codebuild.BuildSpec.from_object(
+                {
+                    "version": "0.2",
+                    "phases": {
+                        "install": {
+                            "on-failure": "ABORT",
+                            "commands": [
+                                # TODO upgrade node, v10 deprecated
+                                "npm install -g typescript",
+                                "npm install -g ts-node",
+                                "npm install -g aws-cdk",
+                                "npm install",
+                                "cdk --version",
+                            ],
+                        },
+                        "build": {
+                            "on-failure": "ABORT",
+                            "commands": [
+                                "CODEPIPELINE_EXECUTION_ID=$(aws codepipeline get-pipeline-state --region us-east-1 --name ${CODEBUILD_INITIATOR#codepipeline/} --query 'stageStates[?actionStates[?latestExecution.externalExecutionId==`'${CODEBUILD_BUILD_ID}'`]].latestExecution.pipelineExecutionId' --output text)",
+                                "echo $CODEPIPELINE_EXECUTION_ID",
+                                "ls",
+                                "cdk synth",
+                                "ls",
+                                "ls cdk.out",
+                                f"aws s3 sync s3://{self.bucket_synth_utils.bucket_name} .",
+                                "pip install -r requirements.txt",
+                                f"python3 parse_cdk_out_to_cb_input.py {self.codebuild_to_sfn_artifact_file} $CODEPIPELINE_EXECUTION_ID",
+                            ],
+                        },
+                    },
+                    "artifacts": {
+                        "files": ["**/*"],
+                        "discard-paths": "no",
+                        "enable-symlinks": "yes",
+                    },
+                }
+            ),
+            environment_variables={
+                "SynthedTemplatesBucket": aws_codebuild.BuildEnvironmentVariable(value=self.bucket_tfplan.bucket_name),
+                "PipelineOwnershipMetadata": aws_codebuild.BuildEnvironmentVariable(value=json.dumps(self.pipeline_ownership_metadata)),
+            }
+            
+        )
+
+        self.artifact_synthed = aws_codepipeline.Artifact()
+
+        self.action_build = aws_codepipeline_actions.CodeBuildAction(
             action_name="CodeBuildCdkSynth",
             project=build_project_cdk_synth,
             input=self.artifact_source,
@@ -268,6 +426,8 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                 resources=[
                     self.bucket_synthed_templates.bucket_arn,
                     self.bucket_synthed_templates.arn_for_objects("*"),
+                    self.bucket_tfplan.bucket_arn,
+                    self.bucket_tfplan.arn_for_objects("*"),
                 ],
             )
         )
@@ -500,7 +660,7 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                     stage_name="Source", actions=[self.action_source]
                 ),
                 aws_codepipeline.StageProps(
-                    stage_name="CdkSynth", actions=[self.action_build_cdk_synth]
+                    stage_name="Build", actions=[self.action_build]
                 ),
                 aws_codepipeline.StageProps(
                     stage_name="EvalEngine", actions=[self.action_eval_engine]
