@@ -253,6 +253,14 @@ class ControlBrokerCodepipelineExampleStack(Stack):
 
         # tfplan
         
+        self.bucket_codebuild_terraform_backend = aws_s3.Bucket(
+            self,
+            "CodeBuildTerraformBackend",
+            block_public_access=aws_s3.BlockPublicAccess.BLOCK_ALL,
+            removal_policy=RemovalPolicy.DESTROY,
+            auto_delete_objects=True,
+        )
+        
         self.bucket_tfplan_utils = aws_s3.Bucket(
             self,
             "TFPlanUtils",
@@ -340,6 +348,9 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                                 "CODEPIPELINE_EXECUTION_ID=$(aws codepipeline get-pipeline-state --region us-east-1 --name ${CODEBUILD_INITIATOR#codepipeline/} --query 'stageStates[?actionStates[?latestExecution.externalExecutionId==`'${CODEBUILD_BUILD_ID}'`]].latestExecution.pipelineExecutionId' --output text)",
                                 "echo $CODEPIPELINE_EXECUTION_ID",
                                 "ls",
+                                # "terraform init",
+                                "terraform init -backend-config=\"bucket=${CodeBuildTerraformBackendBucket}\" -backend-config=\"region=us-east-1\" -backend-config=\"encrypt=true\""
+
                                 "terraform plan --out tfplan.binary && terraform show -json tfplan.binary > tfplan.json",
                                 "ls",
                                 f"aws s3 sync s3://{self.bucket_tfplan_utils.bucket_name} .",
@@ -358,6 +369,7 @@ class ControlBrokerCodepipelineExampleStack(Stack):
             environment_variables={
                 "TFPlanBucket": aws_codebuild.BuildEnvironmentVariable(value=self.bucket_tfplan.bucket_name),
                 "PipelineOwnershipMetadata": aws_codebuild.BuildEnvironmentVariable(value=json.dumps(self.pipeline_ownership_metadata)),
+                "CodeBuildTerraformBackendBucket": aws_codebuild.BuildEnvironmentVariable(value=self.bucket_codebuild_terraform_backend),
             }
             
         )
