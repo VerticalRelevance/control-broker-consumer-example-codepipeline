@@ -322,9 +322,11 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                         "install": {
                             "on-failure": "ABORT",
                             "commands": [
-                                "sudo yum install -y yum-utils",
-                                "sudo yum-config-manager --add-repo https://rpm.releases.hashicorp.com/AmazonLinux/hashicorp.repo",
-                                "sudo yum -y install terraform",
+                                "rpm -qf /usr/bin/yum",
+                                "which yum",
+                                "yum install -y yum-utils",
+                                "yum-config-manager --add-repo https://rpm.releases.hashicorp.com/AmazonLinux/hashicorp.repo",
+                                "yum -y install terraform",
                                 "terraform -install-autocomplete",
                                 "terraform -version",
                             ],
