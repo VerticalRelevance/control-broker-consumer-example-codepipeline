@@ -340,7 +340,7 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                                 "CODEPIPELINE_EXECUTION_ID=$(aws codepipeline get-pipeline-state --region us-east-1 --name ${CODEBUILD_INITIATOR#codepipeline/} --query 'stageStates[?actionStates[?latestExecution.externalExecutionId==`'${CODEBUILD_BUILD_ID}'`]].latestExecution.pipelineExecutionId' --output text)",
                                 "echo $CODEPIPELINE_EXECUTION_ID",
                                 "ls",
-                                "cdk terraform plan --out tfplan.binary && terraform show -json tfplan.binary > tfplan.json",
+                                "terraform plan --out tfplan.binary && terraform show -json tfplan.binary > tfplan.json",
                                 "ls",
                                 f"aws s3 sync s3://{self.bucket_tfplan_utils.bucket_name} .",
                                 "pip install -r requirements.txt",
