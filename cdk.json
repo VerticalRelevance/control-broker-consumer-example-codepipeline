@@ -29,7 +29,7 @@
       "PipelineOwnerName": "Jane Ray",
       "PipelineOwnerEmail": "j.ray@example.com"
     },
-    "control-broker/apigw-url":"https://2sm2qw170c.execute-api.us-east-1.amazonaws.com/CloudFormation",
-    "control-broker/source-iac":"CDK"
+    "control-broker/apigw-url":"https://81xiiw8gel.execute-api.us-east-1.amazonaws.com/SAM",
+    "control-broker/source-iac":"SAM"
   }
 }
