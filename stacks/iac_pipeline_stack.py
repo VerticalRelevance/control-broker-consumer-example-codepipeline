@@ -413,7 +413,7 @@ class ControlBrokerCodepipelineExampleStack(Stack):
 
         self.bucket_sam_packaged_templates = aws_s3.Bucket(
             self,
-            "SAMPackage",
+            "SAMPackagedTemplates",
             block_public_access=aws_s3.BlockPublicAccess.BLOCK_ALL,
             removal_policy=RemovalPolicy.DESTROY,
             auto_delete_objects=True,
@@ -421,7 +421,7 @@ class ControlBrokerCodepipelineExampleStack(Stack):
         
         self.bucket_sam_package_utils = aws_s3.Bucket(
             self,
-            "SAMPackage",
+            "SAMPackageUtils",
             block_public_access=aws_s3.BlockPublicAccess.BLOCK_ALL,
             removal_policy=RemovalPolicy.DESTROY,
             auto_delete_objects=True,
@@ -431,7 +431,8 @@ class ControlBrokerCodepipelineExampleStack(Stack):
             self,
             "ParseSAMPackageOutputToCBInput",
             sources=[
-                aws_s3_deployment.Source.asset(f"./supplementary_files/codebuild_utils/sam_package_utils")
+                # will fail if empty file/dir exists, e.g. __init__.py. See: https://github.com/aws/aws-cdk/issues/19012
+                aws_s3_deployment.Source.asset(f"./supplementary_files/codebuild_utils/sam_package_utils") 
             ],
             destination_bucket=self.bucket_sam_package_utils,
             retain_on_delete=False,
@@ -461,6 +462,21 @@ class ControlBrokerCodepipelineExampleStack(Stack):
         role_sam_package.add_to_policy(
             aws_iam.PolicyStatement(
                 actions=[
+                    "s3:PutObject",
+                    "s3:Get*",
+                    "s3:List*",
+                ],
+                resources=[
+                    self.bucket_sam_package_utils.bucket_arn,
+                    self.bucket_sam_package_utils.arn_for_objects("*"),
+                    self.bucket_sam_packaged_templates.bucket_arn,
+                    self.bucket_sam_packaged_templates.arn_for_objects("*"),
+                ],
+            )
+        )
+        role_sam_package.add_to_policy(
+            aws_iam.PolicyStatement(
+                actions=[
                     "codepipeline:GetPipelineState",
                 ],
                 resources=["*"],
@@ -469,54 +485,50 @@ class ControlBrokerCodepipelineExampleStack(Stack):
 
         self.codebuild_to_sfn_artifact_file = "control-broker-consumer-inputs.json"
             
-        build_project_tfplan = aws_codebuild.PipelineProject(
+        build_project_sam_package = aws_codebuild.PipelineProject(
             self,
             "SAMPackageProject",
             environment = aws_codebuild.BuildEnvironment(
                 build_image = aws_codebuild.LinuxBuildImage.STANDARD_3_0
             ),
             role = role_sam_package,
-            build_spec=aws_codebuild.BuildSpec.from_object(
-                {
-                    "version": "0.2",
-                    "phases": {
-                        "install": {
-                            "on-failure": "ABORT",
-                            "commands": [
-                                "wget https://github.com/aws/aws-sam-cli/releases/latest/download/aws-sam-cli-linux-x86_64.zip",
-                                "sha256sum aws-sam-cli-linux-x86_64.zip",
-                                "unzip aws-sam-cli-linux-x86_64.zip -d sam-installation",
-                                "sudo ./sam-installation/install",
-                                "sam --version",
-                                "rm -f aws-sam-cli-linux-x86_64.zip",
-                                "rm -rf sam-installation",
-                            ],
-                        },
-                        "build": {
-                            "on-failure": "ABORT",
-                            "commands": [
-                                "CODEPIPELINE_EXECUTION_ID=$(aws codepipeline get-pipeline-state --region us-east-1 --name ${CODEBUILD_INITIATOR#codepipeline/} --query 'stageStates[?actionStates[?latestExecution.externalExecutionId==`'${CODEBUILD_BUILD_ID}'`]].latestExecution.pipelineExecutionId' --output text)",
-                                "echo $CODEPIPELINE_EXECUTION_ID",
-                                "ls",
-                                f"sam package --use-json --output-template-file sam_packaged_template.json --s3-bucket {self.bucket_sam_package_utils}"
-                                "ls",
-                                f"aws s3 sync s3://{self.bucket_sam_package_utils.bucket_name} .",
-                                "pip install -r requirements.txt",
-                                f"python3 parse_sam_package_to_cb_input.py {self.codebuild_to_sfn_artifact_file} $CODEPIPELINE_EXECUTION_ID",
-                            ],
-                        },
+            build_spec=aws_codebuild.BuildSpec.from_object({
+                "version": "0.2",
+                "phases": {
+                    "install": {
+                        "on-failure": "ABORT",
+                        "commands": [
+                            "wget https://github.com/aws/aws-sam-cli/releases/latest/download/aws-sam-cli-linux-x86_64.zip",
+                            "sha256sum aws-sam-cli-linux-x86_64.zip",
+                            "unzip aws-sam-cli-linux-x86_64.zip -d sam-installation",
+                            "sudo ./sam-installation/install",
+                            "sam --version",
+                            "rm -f aws-sam-cli-linux-x86_64.zip",
+                            "rm -rf sam-installation",
+                        ],
                     },
-                    "artifacts": {
-                        "files": ["**/*"],
-                        "discard-paths": "no",
-                        "enable-symlinks": "yes",
+                    "build": {
+                        "on-failure": "ABORT",
+                        "commands": [
+                            "CODEPIPELINE_EXECUTION_ID=$(aws codepipeline get-pipeline-state --region us-east-1 --name ${CODEBUILD_INITIATOR#codepipeline/} --query 'stageStates[?actionStates[?latestExecution.externalExecutionId==`'${CODEBUILD_BUILD_ID}'`]].latestExecution.pipelineExecutionId' --output text)",
+                            "echo $CODEPIPELINE_EXECUTION_ID",
+                            "ls",
+                            f"sam package --use-json --output-template-file sam_packaged_template.json --s3-bucket {self.bucket_sam_package_utils.bucket_name}",
+                            "ls",
+                            f"aws s3 sync s3://{self.bucket_sam_package_utils.bucket_name} .",
+                            "pip install -r requirements.txt",
+                            f"python3 parse_sam_package_to_cb_input.py {self.codebuild_to_sfn_artifact_file} $CODEPIPELINE_EXECUTION_ID",
+                        ],
                     },
-                }
-            ),
+                },
+                "artifacts": {
+                    "files": ["**/*"],
+                    "discard-paths": "no",
+                    "enable-symlinks": "yes",
+                },
+            }),
             environment_variables={
-                "SAMPackageBucket": aws_codebuild.BuildEnvironmentVariable(value=self.bucket_sam_package.bucket_name),
                 "PipelineOwnershipMetadata": aws_codebuild.BuildEnvironmentVariable(value=json.dumps(self.pipeline_ownership_metadata)),
-                "CodeBuildTerraformBackendBucket": aws_codebuild.BuildEnvironmentVariable(value=self.bucket_codebuild_terraform_backend.bucket_name),
             }
             
         )
@@ -524,8 +536,8 @@ class ControlBrokerCodepipelineExampleStack(Stack):
         self.artifact_built = aws_codepipeline.Artifact()
 
         self.action_build = aws_codepipeline_actions.CodeBuildAction(
-            action_name="CodeBuildCdkSynth",
-            project=build_project_tfplan,
+            action_name="CodeBuildSAMPackage",
+            project=build_project_sam_package,
             input=self.artifact_source,
             outputs=[self.artifact_built],
         )
