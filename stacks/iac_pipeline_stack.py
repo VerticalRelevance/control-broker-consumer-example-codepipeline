@@ -529,6 +529,7 @@ class ControlBrokerCodepipelineExampleStack(Stack):
             }),
             environment_variables={
                 "PipelineOwnershipMetadata": aws_codebuild.BuildEnvironmentVariable(value=json.dumps(self.pipeline_ownership_metadata)),
+                "CBInputsBucket": aws_codebuild.BuildEnvironmentVariable(value=self.bucket_sam_packaged_templates.bucket_name),
             }
             
         )
@@ -592,6 +593,22 @@ class ControlBrokerCodepipelineExampleStack(Stack):
                     resources=[
                         self.bucket_tfplan.bucket_arn,
                         self.bucket_tfplan.arn_for_objects("*"),
+                    ],
+                )
+            )
+        
+        if self.source_iac == "SAM":
+
+            self.lambda_sign_apigw_request.role.add_to_policy(
+                aws_iam.PolicyStatement(
+                    actions=[
+                        "s3:GetObject",
+                        "s3:GetBucket",
+                        "s3:List*",
+                    ],
+                    resources=[
+                        self.bucket_sam_packaged_templates.bucket_arn,
+                        self.bucket_sam_packaged_templates.arn_for_objects("*"),
                     ],
                 )
             )

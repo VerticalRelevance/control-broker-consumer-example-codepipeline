@@ -38,10 +38,10 @@ second_arg = sys.argv[2]
 print(f'second_arg:\n{second_arg}\n{type(second_arg)}')
 codepipeline_execution_id = second_arg
 
-bucket = os.environ['TFPlanBucket']
+bucket = os.environ['CBInputsBucket']
 print(f'bucket:\n{bucket}\n{type(bucket)}')
 
-path = f'{os.environ["CODEBUILD_SRC_DIR"]}/tfplan.json'
+path = f'{os.environ["CODEBUILD_SRC_DIR"]}/sam_packaged_template.json'
 
 build_id = os.environ["CODEBUILD_BUILD_ID"]
 
