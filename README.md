@@ -1,282 +1,103 @@
-# Control Broker CodePipeline Example Use Case
+# An example Consumer of Control Broker: via CodePipeline
 
-This repository shows off one use case of the [VR Control Broker](https://github.com/VerticalRelevance/control-broker) by
-walking the user through building a pipeline to
-continuously evaluate the IaC pushed to a repository by an application team, and
-then making changes to the Policy as Code and the fake application and observing
-the results. This is meant to illustrate one way a security team might integrate
-the Control Broker into their enterprise security and compliance program.
+## Overview
 
-You can find the full Control Broker architectural writeup, which focuses on this use
-case, [here](https://www.verticalrelevance.com/control-broker-eval-engine/), and
-see the original Control Broker repository
-[here](https://github.com/VerticalRelevance/ControlBrokerEvalEngine-Blueprint).
+[Control Broker](https://github.com/VerticalRelevance/control-broker) is a Policy as Code evaluation engine available via an API. Various Consumers can invoke this API to get evaluations of a given input against a series of policies expressed using the [Open Policy Agent](https://www.openpolicyagent.org) framework. This Policy-as-Code process codifies security and operational requirements into policy code, which in the case of OPA are written in the [Rego](https://www.openpolicyagent.org/docs/latest/policy-language/) language.
 
-## Prerequisites
+A common use case for OPA is a pre-deployment check in a Infrastructure-as-Code pipeline. 
 
-Install the [AWS CDK Toolkit
-v2](https://docs.aws.amazon.com/cdk/v2/guide/cli.html) CLI tool.
+The benefit of Policy-as-Code is that the App Team pushing this IaC template get this compliance feedback early & often.
+To this end, an App Team might hit the same endpoint that their IaC pipeline will hit, to get a pre-commit compliance check, as part of the security process known as [Shifting Left](https://about.gitlab.com/topics/ci-cd/shift-left-devops/).
 
-If you encounter issues running the `cdk` commands below, check the version of
-`aws-cdk-lib` from [./requirements.txt](./requirements.txt) for the exact
-version of the CDK library used in this repo. The latest v2 version of the CDK
-Toolkit should be compatible, but try installing the CDK Toolkit version
-matching `requirements.txt` before trying other things to resolve your issues.
+This repository aims to deploy a minimal Python script that invokes the Control Broker endpoint to get an evaluation on a local file:  [payload.json](./src/control_broker_consumer_example_local_dev/payload.json), and returing the response to the (`.gitignore`'d) [output.json](./src/control_broker_consumer_example_local_dev/outputs/output.json).
 
-## Getting a Control Broker Instance 
+This `readme.md` will cover:
 
-To follow this tutorial, you will need a working installation of the Control
-Broker. Luckily, both the Control Broker and this example are written using the
-AWS Python CDK, so the setup and deployment steps are the same for each.
+1. Setup the Python environment
+2. Invoke the Control Broker via the Local Python Script
+3. Toggle the input to test the PaC evaluation
 
-Before starting, head over to the [Control Broker repository]() and launch it into your account.
 
-## Setting up the Example Pipeline
+## 1. Setup the Python Environment
 
-Clone this repo to your machine before proceeding.
+### Requirements
 
-Follow the setup steps below to properly configure the environment and first
-deployment of the infrastructure.
+1. A running serverless instance of Control Broker. See setup [here](https://github.com/VerticalRelevance/control-broker)
+2. A development environment capable of setting up a Python virtual environment
 
-To manually create a virtualenv on MacOS and Linux:
+#### Tested with
 
-``` $ python3 -m venv .venv ```
-
-After the init process completes and the virtualenv is created, you can use the
-following step to activate your virtualenv.
-
-``` $ source .venv/bin/activate ```
-
-If you are on a Windows platform, you would activate the virtualenv like this:
+This repository was tested with a [Cloud9](https://aws.amazon.com/cloud9/) IDE.
 
 ```
-% .venv\Scripts\activate.bat
+uname -a # (Cloud9) Linux ip-10-0-3-28.ec2.internal 4.14.320-243.544.amzn2.x86_64 #1 SMP Tue Aug 1 21:03:08 UTC 2023 x86_64 x86_64 x86_64 GNU/Linux
+python3 -V # Python 3.9.6
 ```
 
-Once the virtualenv is activated, you can install the required dependencies.
+### Fetch the Control Broker Invoke Url
 
-``` $ pip install -r requirements.txt ```
+The CodePipeline stacks needs to know at which URL to invoke the Control Broker instance deployed in step 1.1. 
 
-[Bootstrap](https://docs.aws.amazon.com/cdk/v2/guide/cli.html#cli-bootstrap) the
-cdk app:
+Set `CONTROL_BROKER_STACK_NAME` in [main.py](./src/control_broker_consumer_example_local_dev/main.py)
 
-``` cdk bootstrap ```
+For Python environment setup, consider: 
 
-At this point you can
-[deploy](https://docs.aws.amazon.com/cdk/v2/guide/cli.html#cli-deploy) the CDK
-app for this blueprint:
+```bash
+cat >> ~/.bashrc << EOF
 
-``` $ cdk deploy ```
-
-After running `cdk deploy`, the pipeline will be set up.
-
-## Walkthrough
-
-In this walkthrough, we will change some aspects of the deployed pipeline to
-demonstrate how the Control Broker works.
-
-*⚠️ NOTE ⚠️*
-
-This repository creates a CodeCommit repo containing the example CDK files at [./suppplementary_files/application_team_example_app](./suppplementary_files/application_team_example_app). The purpose of this repository is to contain fake "application" code that is deployed by our
-pipeline. So, even though
-[./suppplementary_files/application_team_example_app](./suppplementary_files/application_team_example_app)
-contains a CDK app, you will never deploy that directly - you will deploy the
-pipeline app which makes up the bulk of this repository, and then the pipeline
-will deploy this example app. This can be a little confusing, but hopefully this
-clears things up.
-
-### (1)
-
-In the AWS Console, navigate to `CodePipeline` / `Pipelines` and find the
-pipeline whose name starts with `ControlBrokerEvalEngineCdkStack`. This is our
-Evaluation Pipeline.
-
-The `Initial commit by AWS CodeCommit` commit occurs when CDK initializes the
-repository with IaC defined in the  [Application Team Example
-App](./supplementary_files/application_team_example_app) directory of the Root
-Evaluation Pipeline CDK application. These files serve only to initialize the
-CodeCommit repository.
-
-See the screenshot below for the expected state of the Evaluation Pipeline upon
-the initial deployment.
-
-![Screenshot of CodePipeline](./supplementary_files/readme/pipeline-screenshots/initial-commit/initial.png)
-
-The initial IaC is compliant, so it should pass the Evaluation Pipeline. Let's
-modify the Example App to see what happens if we propose noncompliant IaC. 
-
-Before we can modify the Example App, get ready to make a code change. You can
-do this in a couple of ways:
-
-1.  Clone the Example App CodeCommit repository. To clone the Example App
-    CodeCommit repository, you have a number of connection options. To clone the
-    repo using AWS API credentials you use for the AWS CLI, Boto3, etc., try
-    [`git-remote-codecommit`](https://docs.aws.amazon.com/codecommit/latest/userguide/setting-up-git-remote-codecommit.html).
-    For SSH, see the [CodeCommit SSH
-    documentation](https://docs.aws.amazon.com/codecommit/latest/userguide/setting-up-ssh-unixes.html).
-
-2.  If you just want to play along without cloning the example repository
-    to your local machine, you can instead edit code files directly using CodeCommit in the
-    AWS console interface. To do this, just navigate to the example repository in
-    the CodeCommit console, navigate to a file, and use the Edit button to edit
-    files:
-
-    ![Screenshot of CodeCommit with Edit button pointed to with a green arrow](./supplementary_files/readme/codecommit-screenshots/codecommit-edit-button.png)
-
-*Note that if you choose not to clone the repository locally and instead use the*
-*CodeCommit console approach, you won't be able to run the ensuing*
-*`npm install`, `cdk synth`, etc., but you will be able to make the mentioned*
-*code changes.*
-
-### (2)
-
-Once you have cloned the repository, run `npm install`. As we edit the resources
-in this TypeScript CDK application, we can run `cdk synth` to confirm our
-resources compile to CloudFormation successfully. But we will not `cdk deploy`
-this Example App directly, because the IaC must first be approved by the
-Evaluation Pipeline.
-
-After running `npm install`, run `cdk synth` to confirm the CDK app synthesizes
-without errors. You should see some output like the following:
-
-```
-[ControlBrokerEvalEngine-ApplicationTeam-ExampleApp] on main [?]
- 🦖❯ cdk synth
-Successfully synthesized to ControlBrokerEvalEngine-ApplicationTeam-ExampleApp/cdk.out
-Supply a stack id (ControlBrokerEvalEngineExampleAppStackSNS, ControlBrokerEvalEngineExampleAppStackSQS) to display its template.
+alias ve='python3 -m venv venv'
+alias ae='deactivate &> /dev/null; source ./venv/bin/activate'
+alias pu='python3 -m pip install -U pip setuptools wheel'
+alias pit='python3 -m pip install pip-tools'
+alias pc='pip-compile'
+alias ps='pip-sync'
+alias start='ve && ae && pu && pit'
+EOF
+exec $SHELL
+start
+pc & ps
 ```
 
-You can inspect the CloudFormation templates in the `cdk.out` directory (they
-end with `.template.json`) if you want.
-These are what our OPA policies evaluate for compliance.
 
-Next, inside the example app directory, we'll add a noncompliant resource to the
-SQS stack. Open the Example App repo and navigate to this path:
+## 2. Invoke the Control Broker API
 
-```
-lib/control_broker_eval_engine-example_app-stack-sqs.ts 
-```
 
-Remove or comment out the following bit of code:
+Let's examine our input and the policy against which it is being evaluated.
 
-```
-  const passMeQueue = new sqs.Queue(this, 'passMeQueue', {
-    fifo: true,
-  });
- 
-```
+Here's our `payload.json`, which contains a CloudFormation template:
 
-Then uncomment the `failMeQueue` in section (2). Save the file, then commit it
-to the CodeCommit repository with a command like the following (you can change
-the commit message if you want):
-
-```
-git add .
-git commit -m "add failMe resource to SQS stack"
+```json
+{
+    "Resources": {
+        "MyQueue": {
+            "Type": "AWS::SQS::Queue",
+            "Properties": {
+                "QueueName":"MyQueue",
+                "ContentBasedDeduplication": true
+            }
+        }
+    }
+}
 ```
 
-Push your change to the CodeCommit remote:
+This [OPA policy](https://github.com/VerticalRelevance/control-broker-module-private/blob/cb-core/supplementary_files/policy_as_code/python/opa_policies/cloudformation/AWS--SQS--Queue__cfn01__dedup.rego) performs a simple operational check on that CloudFormation template. It applies to resources of type "AWS::SQS::Queue", and requires that `ContentBasedDeduplication` be `true`.
 
-```
-git push
-```
+Consider loading the CloudFormation template and the OPA policy into the [Rego Playground](https://play.openpolicyagent.org/p/4rMvYQH7La) and running `Evaluate`. Toggle the `ContentBasedDeduplication` field from `true` to `false` to see how it affects the evaluation's `allow` decision.
 
-Return to the CodePipeline console to track the `failMe` commit through the
-Evaluation Pipeline. It should start running shortly after you've pushed your
-commit. If it doesn't, make sure you're working in the repo you cloned from
-CodeCommit, not this repo.
+When we run our local evaluation, we expect the initial `allow` result to be `true`.
 
-Since we added a non-compliant resource, it should fail at the EvalEngine stage
-as seen in the below screenshot:
-
-![Screenshot of CodePipeline](./supplementary_files/readme/pipeline-screenshots/fail-me/fail.png)
-
-Let's see the result of the evaluation. In the AWS Console, navigate to
-`DynamoDB` / `Tables` and find the table whose name starts with
-`ControlBrokerEvalEngineCdkStack-EvalResults`. These are results of the
-Evaluation Pipeline.
-
-Select `ExploreTableItems`. The evaluation results of the `failMe` commit should
-appear here, including the `reason` the IaC was denied along with the metadata
-defined in the
-[pipeline-ownership-metadata](/ControlBrokerEvalEngine-Blueprint/supplementary_files/pipeline-ownership-metadata/business-unit-a/eval-engine-metadata.json)
-file.
-
-The `reason` should match the one specified in the relevant OPA Policy. Check
-out the [policy governing
-SQS](./supplementary_files/opa-policies/SQS/sqs_queue_fifo.rego) to compare the
-configuration of the `failMeQueue` resource we just proposed with the allowed
-values defined by the OPA Policy.
-
-Note that this table can be queried programatically. Check the logs of the
-Lambda function prefixed `ControlBrokerEvalEngineCd-EvalEngineWrapper` for the
-`EvalResultsTablePk` to query the Eval Results table with. This PK corresponds
-to a Step Function execution - each execution creates DynamoDB results table
-entries.
-
-So far we've seen compliant IaC (1) pass and noncompliant IaC (2) fail using the
-provided OPA Policies.
-
-### (3)
-
-In the final portion of the walkthrough, we'll edit the OPA Policy governing the
-evaluation. Let's take the noncompliant SQS Queue from (2) and edit the relevant
-OPA Policy so that it now compliant, then we'll send it back through the
-Evaluation Pipeline and compare the result.
-
-In our Example App repo, comment out the IaC labeled (1) and (2) and uncomment
-section (3).
-
-Notice that we've simple renamed the SQS Queue that just failed in
-(2) to `fifoFalseQueueMakeMePass` and left the configuration the same.
-
-Commit this change:
-
-```
-git add .
-git commit -m "fifoFalseQueueMakeMePass"
+```bash
+python3 src/control_broker_consumer_example_local_dev/main.py
 ```
 
-Now let's edit the OPA relevant Policy to make this non-Fifo Queue compliant.
-
-Within the Root CDK Application (not the example app cloned from CodeCommit!),
-let's edit the [sqs\_queue\_fifo.rego](./supplementary_files/opa-policies/SQS/sqs_queue_fifo.rego)
-file.
-
-In the `obedient_resources` section, change the allowed Fifo parameter value to:
-
-``` properties.FifoQueue == false ```
-
-To recap, while in sections (1) and (2) we used a OPA Policy that required a SQS
-Queue to be Fifo, in section (3) we've edited the Policy to require that same
-parameter to be `false`.
-
-Save both files and redepoy: `cdk deploy`.
-
-Then, navigate back to the Evaluation Pipeline in the AWS Console.  Remember
-that when we first commited `fifoFalseQueueMakeMePass`, the original OPA Policy
-was in place. We expect that to be rejected.
-
-Now that we have redeployed and the changes to the OPA Policy have made their
-way to S3, let's run it again.  Select the `Release change` button in the top
-right of the AWS Console to re-run the pipeline with that same
-`fifoFalseQueueMakeMePass` commit. That same non-Fifo queue should now be
-compliant, per the changes we made to the policy. We now expect the Evaluation
-Pipeline to succeed.
-
-### Conclusion
-
-This concludes our walkthrough. We examined the relationship between the two
-inputs to the Evaluation Pipeline - the Example App and the OPA Policies. We
-made alternating changes to the IaC and the OPA Policy to get different results.
-
-Both our Example App and OPA Policies were simple and rather arbitrary for
-simplicity's sake. As an organization enters the Policy as Code space, they can
-apply the lessons learned here to increasingly sophisticated applications and
-security policies.
+Check the response in [output.json](./src/control_broker_consumer_example_local_dev/outputs/output.json) to confirm.
 
 
-# buildme 5.3.22
+Now let's toggle `ContentBasedDeduplication` to be `false` in our CloudFormation template [input.json](./supplementary_files/pipeline_inputs/CloudFormation/input.json) and save the edited file.
+
+When re re-run, we expect the `allow` result to be `false`.
+
+For a complete list of example Consumers of Control Broker, including a CodePipeline implementation of the IaC pipeline referenced above, see [here](https://github.com/VerticalRelevance/control-broker)
 
 ## cdk.json
 
@@ -284,6 +105,5 @@ add hard-coded value from `control-broker` deployment output
 ```
 {
     "control-broker/apigw-url":"MY_URL"
-    "control-broker/sfn-invoke-arn" : ["MY_ARN"]
 }
 ```
